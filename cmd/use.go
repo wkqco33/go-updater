@@ -5,10 +5,39 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+
+	"go_updater/internal/installer"
 
 	"github.com/spf13/cobra"
 )
+
+// parseGoVersion은 "go1.21.5" 형식을 [major, minor, patch]로 파싱한다.
+// 파싱 실패 시 [-1, -1, -1]을 반환한다.
+func parseGoVersion(v string) [3]int {
+	s := strings.TrimPrefix(v, "go")
+	parts := strings.SplitN(s, ".", 3)
+	var nums [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return [3]int{-1, -1, -1}
+		}
+		nums[i] = n
+	}
+	return nums
+}
+
+func goVersionGreater(a, b string) bool {
+	va, vb := parseGoVersion(a), parseGoVersion(b)
+	for i := range va {
+		if va[i] != vb[i] {
+			return va[i] > vb[i]
+		}
+	}
+	return false
+}
 
 var useCmd = &cobra.Command{
 	Use:   "use <version>",
@@ -43,7 +72,7 @@ var useCmd = &cobra.Command{
 						if entry.IsDir() && strings.HasPrefix(entry.Name(), targetVersion) {
 							// Find the highest version if multiple matches exist, but for simplicity here we take the first match or exact.
 							// Assuming dir reading order might not be semantic version order, simple prefix match for now.
-							if matchedVersion == "" || entry.Name() > matchedVersion {
+							if matchedVersion == "" || goVersionGreater(entry.Name(), matchedVersion) {
 								matchedVersion = entry.Name()
 							}
 						}
@@ -66,12 +95,7 @@ var useCmd = &cobra.Command{
 			}
 		}
 
-		currentLink := filepath.Join(targetDir, "current")
-		slog.Debug("updating symlink", "link", currentLink, "target", targetGoDir)
-
-		os.Remove(currentLink) // Remove existing symlink
-		
-		if err := os.Symlink(targetGoDir, currentLink); err != nil {
+		if err := installer.UpdateCurrentSymlink(targetDir, targetGoDir); err != nil {
 			slog.Error("failed to create symlink", "error", err)
 			fmt.Printf("버전 변경 실패: %v\n", err)
 			os.Exit(1)

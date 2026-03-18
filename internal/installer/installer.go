@@ -6,39 +6,79 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
+// downloadClient: 연결·헤더 타임아웃은 설정하되, 대용량 파일 수신 중 강제 종료를 막기 위해
+// 전체 Timeout은 설정하지 않는다.
+var downloadClient = &http.Client{
+	Transport: &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout: 30 * time.Second,
+		}).DialContext,
+		ResponseHeaderTimeout: 30 * time.Second,
+	},
+}
+
+// progressWriter는 io.Writer를 감싸 다운로드 진행률을 출력한다.
+type progressWriter struct {
+	total   int64 // 전체 크기 (0이면 알 수 없음)
+	written int64
+	lastPct int
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n := len(b)
+	p.written += int64(n)
+	if p.total > 0 {
+		pct := int(p.written * 100 / p.total)
+		if pct >= p.lastPct+5 {
+			p.lastPct = pct
+			fmt.Printf("\r  %d%% (%d / %d MB)", pct, p.written/1024/1024, p.total/1024/1024)
+		}
+	} else {
+		fmt.Printf("\r  %.1f MB", float64(p.written)/1024/1024)
+	}
+	return n, nil
+}
+
 // DownloadFile downloads a file from the URL to the destination.
-func DownloadFile(url, dest string) error {
+// SHA256 해시를 다운로드와 동시에 계산해 반환한다 (파일 재읽기 없음).
+func DownloadFile(url, dest string) (string, error) {
 	slog.Debug("starting file download", "url", url, "dest", dest)
-	resp, err := http.Get(url)
+	resp, err := downloadClient.Get(url)
 	if err != nil {
-		return fmt.Errorf("failed to download file: %w", err)
+		return "", fmt.Errorf("failed to download file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
+		return "", fmt.Errorf("bad status: %s", resp.Status)
 	}
 
 	out, err := os.Create(dest)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return "", fmt.Errorf("failed to create file: %w", err)
 	}
 	defer out.Close()
 
 	fmt.Printf("Downloading %s...\n", url)
-	written, err := io.Copy(out, resp.Body)
+	pw := &progressWriter{total: resp.ContentLength}
+	h := sha256.New()
+	// TeeReader: body → hash 계산, MultiWriter: file 저장 + 진행률 동시 출력
+	written, err := io.Copy(io.MultiWriter(out, pw), io.TeeReader(resp.Body, h))
+	fmt.Println() // 진행률 줄 마무리
 	if err != nil {
-		return fmt.Errorf("failed to write to file: %w", err)
+		return "", fmt.Errorf("failed to write to file: %w", err)
 	}
 	slog.Debug("download complete", "bytes", written)
-	return nil
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // VerifyChecksum verifies the SHA256 checksum of a file.
@@ -93,22 +133,35 @@ func ExtractArchive(archivePath, destDir string) error {
 	return nil
 }
 
+// UpdateCurrentSymlink updates the 'current' symlink in targetDir to point to goDir.
+func UpdateCurrentSymlink(targetDir, goDir string) error {
+	currentLink := filepath.Join(targetDir, "current")
+	slog.Debug("updating current symlink", "link", currentLink, "target", goDir)
+	os.Remove(currentLink)
+	if err := os.Symlink(goDir, currentLink); err != nil {
+		return fmt.Errorf("failed to create symlink for current version: %w", err)
+	}
+	return nil
+}
+
 // InstallGo handles the complete flow of downloading and installing.
 func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	tmpDir := os.TempDir()
 	archivePath := filepath.Join(tmpDir, filepath.Base(url))
 	slog.Debug("install process started", "tmp_archive", archivePath, "target_dir", targetDir, "version", version)
 
-	// 1. Download
-	if err := DownloadFile(url, archivePath); err != nil {
+	// 1. Download + SHA256 동시 계산 (단일 패스)
+	fmt.Println("Verifying checksum...")
+	actualSha256, err := DownloadFile(url, archivePath)
+	if err != nil {
 		return err
 	}
 	defer os.Remove(archivePath)
 
 	// 2. Verify
-	fmt.Println("Verifying checksum...")
-	if err := VerifyChecksum(archivePath, sha256Str); err != nil {
-		return err
+	slog.Debug("checksum calculated", "actual", actualSha256, "expected", sha256Str)
+	if actualSha256 != sha256Str {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", sha256Str, actualSha256)
 	}
 	fmt.Println("Checksum OK.")
 
@@ -133,12 +186,12 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	if err := os.RemoveAll(extractTmp); err != nil {
 		return err
 	}
-	
+
 	if err := ExtractArchive(archivePath, extractTmp); err != nil {
 		os.RemoveAll(extractTmp)
 		return err
 	}
-	
+
 	// The archive extracts a directory named "go", rename it to the version name
 	extractedGoDir := filepath.Join(extractTmp, "go")
 	if err := os.Rename(extractedGoDir, finalGoDir); err != nil {
@@ -148,15 +201,12 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	os.RemoveAll(extractTmp)
 
 	// 5. Update current symlink
-	currentLink := filepath.Join(targetDir, "current")
-	slog.Debug("updating current symlink", "link", currentLink, "target", finalGoDir)
-	os.Remove(currentLink) // Remove if exists
-	
-	if err := os.Symlink(finalGoDir, currentLink); err != nil {
-		return fmt.Errorf("failed to create symlink for current version: %w", err)
+	if err := UpdateCurrentSymlink(targetDir, finalGoDir); err != nil {
+		return err
 	}
 
 	fmt.Printf("\n설치가 완료되었습니다! Go %s 버전이 %s 에 설치되었습니다.\n", version, finalGoDir)
+	currentLink := filepath.Join(targetDir, "current")
 	binDir := filepath.Join(currentLink, "bin")
 
 	fmt.Println("\n[환경 변수(PATH) 설정 안내]")
@@ -176,6 +226,6 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 		fmt.Println("\n설정 후에는 터미널을 재시작하거나 'source' 명령어로 설정을 적용하세요.")
 		fmt.Printf("  source ~/%s\n", configFiles[0])
 	}
-	
+
 	return nil
 }
