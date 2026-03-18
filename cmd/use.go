@@ -53,7 +53,7 @@ var useCmd = &cobra.Command{
 						targetVersion = matchedVersion
 						slog.Debug("found prefix matched installed version", "matched", targetVersion)
 					} else {
-						fmt.Printf("버전 '%s'가 설치되어 있지 않습니다. 'go_updater list'로 설치된 목록을 확인하거나 'go_updater install %s'로 설치하세요.\n", version, version)
+						fmt.Printf("버전 '%s'가 설치되어 있지 않습니다. 'go-updater list'로 설치된 목록을 확인하거나 'go-updater install %s'로 설치하세요.\n", version, version)
 						os.Exit(1)
 					}
 				} else {

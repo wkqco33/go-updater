@@ -1,6 +1,6 @@
-# Go Updater (go_updater)
+# Go Updater (go-updater)
 
-`go_updater`는 시스템에 설치된 Go 언어를 여러 버전별로 관리하고, 최신 버전으로 빠르고 쉽게 업데이트할 수 있도록 도와주는 CLI 도구입니다.
+`go-updater`는 시스템에 설치된 Go 언어를 여러 버전별로 관리하고, 최신 버전으로 빠르고 쉽게 업데이트할 수 있도록 도와주는 CLI 도구입니다.
 `rustup`, `nvm`, `fnm` 등과 유사하게 여러 버전을 설치하고 필요에 따라 즉시 전환할 수 있는 기능을 제공합니다.
 
 ## 특징
@@ -18,9 +18,9 @@
 
 ```bash
 git clone <repository_url>
-cd go_updater
+cd go-updater
 go mod tidy
-go build -o go_updater
+go build -o go-updater
 ```
 
 ## 사용 방법
@@ -31,13 +31,13 @@ go build -o go_updater
 
 ```bash
 # 최신 안정 버전 설치
-./go_updater install
+./go-updater install
 
 # 특정 마이너 버전의 최신 패치 버전 설치 (예: 1.20.x 중 최신)
-./go_updater install 1.20
+./go-updater install 1.20
 
 # 특정 버전 설치
-./go_updater install 1.20.5
+./go-updater install 1.20.5
 ```
 
 ### 2. 설치된 목록 확인 (`list`)
@@ -45,7 +45,7 @@ go build -o go_updater
 로컬에 설치된 모든 Go 버전 목록과 현재 사용 중인 버전을 확인합니다.
 
 ```bash
-./go_updater list
+./go-updater list
 ```
 
 ### 3. 버전 전환 (`use`)
@@ -53,7 +53,7 @@ go build -o go_updater
 이미 설치된 다른 버전으로 즉시 전환합니다.
 
 ```bash
-./go_updater use 1.20
+./go-updater use 1.20
 ```
 
 ### 4. 버전 삭제 및 정리 (`clean`)
@@ -62,21 +62,21 @@ go build -o go_updater
 
 ```bash
 # 특정 버전 삭제
-./go_updater clean 1.20.5
+./go-updater clean 1.20.5
 
 # 현재 사용 중인 버전을 제외한 모든 버전 삭제
-./go_updater clean --unused
+./go-updater clean --unused
 
 # 모든 Go 버전 및 관련 파일 삭제
-./go_updater clean --all
+./go-updater clean --all
 ```
 
 ### 5. 버전 확인 (`version`)
 
-`go_updater` 자체의 버전을 확인합니다.
+`go-updater` 자체의 버전을 확인합니다.
 
 ```bash
-./go_updater version
+./go-updater version
 ```
 
 ## 환경 변수 설정 (PATH)
