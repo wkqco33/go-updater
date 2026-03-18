@@ -7,10 +7,15 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+	"time"
 )
 
 const ReleaseURL = "https://go.dev/dl/?mode=json"
 const AllReleaseURL = "https://go.dev/dl/?mode=json&include=all"
+
+var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
+}
 
 func FetchReleases(includeAll bool) ([]GoRelease, error) {
 	url := ReleaseURL
@@ -18,7 +23,7 @@ func FetchReleases(includeAll bool) ([]GoRelease, error) {
 		url = AllReleaseURL
 	}
 	slog.Debug("fetching releases from", "url", url)
-	resp, err := http.Get(url)
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
