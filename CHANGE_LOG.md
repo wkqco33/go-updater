@@ -1,5 +1,17 @@
 # 변경 이력 (Change Log)
 
+## [2.1.0] - 2026-07-31
+### 추가 (Added)
+- `private` 명령어 그룹 추가:
+  - `private config init|set|show`: 프라이빗 모듈 캐시 정책 관리
+  - `private sync`: 프라이빗 모듈 선캐시(재시도/버전 생략 시 latest 지원)
+  - `private env`: 다른 프로젝트 재사용용 환경변수 출력
+  - `private clean`: 보존기간/최대용량/전체삭제 기반 캐시 정리
+- 프라이빗 모듈 동기화 메타데이터(`~/.go/private/metadata.json`) 기록 기능 추가
+
+### 변경 (Changed)
+- README에 프라이빗 모듈 캐시 사용 시나리오/보안 주의사항 문서화
+
 ## [2.0.0] - 2026-03-18
 ### 추가 (Added)
 - **Go 버전 매니저 기능**: 이제 시스템에 여러 버전의 Go를 독립적으로 설치하고 관리할 수 있습니다.
