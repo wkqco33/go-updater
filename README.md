@@ -79,6 +79,73 @@ go build -o go-updater
 ./go-updater version
 ```
 
+## 프라이빗 모듈 캐시 사용
+
+`go-updater private` 명령으로 프라이빗 모듈 캐시를 구성하고, 다른 프로젝트에서 동일 캐시를 재사용할 수 있습니다.
+
+### 1) 설정 초기화 및 정책 설정
+
+```bash
+# 기본 설정 파일 생성 (~/.go/private/config.json)
+./go-updater private config init
+
+# private 모듈 패턴 + 캐시 경로 설정
+./go-updater private config set \
+  --private github.com/my-org/*,git.example.com/* \
+  --cache-dir ~/.go/private/modcache
+
+# 현재 설정 확인
+./go-updater private config show
+```
+
+> `GONOSUMDB`, `GONOPROXY`를 지정하지 않으면 `GOPRIVATE`와 동일 패턴으로 자동 적용됩니다.
+
+### 2) 모듈 선캐시(sync)
+
+```bash
+# 버전 고정 동기화
+./go-updater private sync github.com/my-org/private-lib@v1.2.3
+
+# 버전 생략 시 latest 사용 (기본값)
+./go-updater private sync github.com/my-org/private-lib
+
+# 재시도 횟수 지정
+./go-updater private sync --retries 5 github.com/my-org/private-lib@v1.2.3
+```
+
+동기화 메타데이터는 `~/.go/private/metadata.json`에 기록됩니다.
+
+### 3) 다른 프로젝트에서 캐시 재사용
+
+```bash
+# export 스크립트 출력
+./go-updater private env
+
+# 오프라인 우선 모드(GOPROXY=off 포함)
+./go-updater private env --offline
+```
+
+출력된 환경변수를 소비 프로젝트 셸에 적용한 뒤 `go build`, `go test`를 실행하면 동일 캐시를 재사용할 수 있습니다.
+
+### 4) 캐시 정리
+
+```bash
+# N일 이전 파일 정리
+./go-updater private clean --stale-days 30
+
+# 최대 용량(MB) 초과 시 오래된 파일부터 정리
+./go-updater private clean --max-size-mb 2048
+
+# 캐시 전체 삭제
+./go-updater private clean --all
+```
+
+### 보안 주의사항
+
+- 이 기능은 인증정보(토큰/패스워드)를 설정 파일에 저장하지 않습니다.
+- 인증은 SSH 에이전트, 환경변수, `git credential helper`, OS 키체인 등 외부 비밀 저장소를 사용하세요.
+- CI 로그에 민감정보가 출력되지 않도록 `go env`, `git remote -v` 출력을 그대로 노출하지 마세요.
+
 ## 환경 변수 설정 (PATH)
 
 버전 매니저 기능을 정상적으로 사용하려면, 환경 변수 `PATH`에 아래 경로를 추가해야 합니다.
