@@ -41,15 +41,15 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          BIN_NAME="go-updater${{ matrix.suffix }}"
+          BIN_NAME="gu${{ matrix.suffix }}"
           go build -o "${BIN_NAME}" .
-          tar -czf "go-updater_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" "${BIN_NAME}"
+          tar -czf "gu_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" "${BIN_NAME}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: go-updater_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: go-updater_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+          name: gu_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: gu_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
 
   release:
     name: Create Release

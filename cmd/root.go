@@ -11,7 +11,7 @@ import (
 var (
 	debug   bool
 	rootCmd = &cobra.Command{
-		Use:   "go-updater",
+		Use:   "gu",
 		Short: "Go 언어를 설치하거나 최신 버전으로 업데이트하는 도구입니다.",
 		Long:  `go.dev에서 최신 Go 릴리스 정보를 가져와 사용자의 시스템 환경에 맞는 버전을 자동으로 다운로드하고 설치해주는 빠르고 유연한 CLI 도구입니다.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
