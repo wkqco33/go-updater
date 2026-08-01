@@ -1,6 +1,6 @@
-# Go Updater (go-updater)
+# Go Updater (gu)
 
-`go-updater`는 시스템에 설치된 Go 언어를 여러 버전별로 관리하고, 최신 버전으로 빠르고 쉽게 업데이트할 수 있도록 도와주는 CLI 도구입니다.
+`gu`는 시스템에 설치된 Go 언어를 여러 버전별로 관리하고, 최신 버전으로 빠르고 쉽게 업데이트할 수 있도록 도와주는 CLI 도구입니다.
 `rustup`, `nvm`, `fnm` 등과 유사하게 여러 버전을 설치하고 필요에 따라 즉시 전환할 수 있는 기능을 제공합니다.
 
 ## 특징
@@ -20,7 +20,7 @@
 git clone <repository_url>
 cd go-updater
 go mod tidy
-go build -o go-updater
+task build
 ```
 
 ## 사용 방법
@@ -31,13 +31,13 @@ go build -o go-updater
 
 ```bash
 # 최신 안정 버전 설치
-./go-updater install
+./gu install
 
 # 특정 마이너 버전의 최신 패치 버전 설치 (예: 1.20.x 중 최신)
-./go-updater install 1.20
+./gu install 1.20
 
 # 특정 버전 설치
-./go-updater install 1.20.5
+./gu install 1.20.5
 ```
 
 ### 2. 설치된 목록 확인 (`list`)
@@ -45,7 +45,7 @@ go build -o go-updater
 로컬에 설치된 모든 Go 버전 목록과 현재 사용 중인 버전을 확인합니다.
 
 ```bash
-./go-updater list
+./gu list
 ```
 
 ### 3. 버전 전환 (`use`)
@@ -53,7 +53,7 @@ go build -o go-updater
 이미 설치된 다른 버전으로 즉시 전환합니다.
 
 ```bash
-./go-updater use 1.20
+./gu use 1.20
 ```
 
 ### 4. 버전 삭제 및 정리 (`clean`)
@@ -62,40 +62,40 @@ go build -o go-updater
 
 ```bash
 # 특정 버전 삭제
-./go-updater clean 1.20.5
+./gu clean 1.20.5
 
 # 현재 사용 중인 버전을 제외한 모든 버전 삭제
-./go-updater clean --unused
+./gu clean --unused
 
 # 모든 Go 버전 및 관련 파일 삭제
-./go-updater clean --all
+./gu clean --all
 ```
 
 ### 5. 버전 확인 (`version`)
 
-`go-updater` 자체의 버전을 확인합니다.
+`gu` 자체의 버전을 확인합니다.
 
 ```bash
-./go-updater version
+./gu version
 ```
 
 ## 프라이빗 모듈 캐시 사용
 
-`go-updater private` 명령으로 프라이빗 모듈 캐시를 구성하고, 다른 프로젝트에서 동일 캐시를 재사용할 수 있습니다.
+`gu private` 명령으로 프라이빗 모듈 캐시를 구성하고, 다른 프로젝트에서 동일 캐시를 재사용할 수 있습니다.
 
 ### 1) 설정 초기화 및 정책 설정
 
 ```bash
 # 기본 설정 파일 생성 (~/.go/private/config.json)
-./go-updater private config init
+./gu private config init
 
 # private 모듈 패턴 + 캐시 경로 설정
-./go-updater private config set \
+./gu private config set \
   --private github.com/my-org/*,git.example.com/* \
   --cache-dir ~/.go/private/modcache
 
 # 현재 설정 확인
-./go-updater private config show
+./gu private config show
 ```
 
 > `GONOSUMDB`, `GONOPROXY`를 지정하지 않으면 `GOPRIVATE`와 동일 패턴으로 자동 적용됩니다.
@@ -104,13 +104,13 @@ go build -o go-updater
 
 ```bash
 # 버전 고정 동기화
-./go-updater private sync github.com/my-org/private-lib@v1.2.3
+./gu private sync github.com/my-org/private-lib@v1.2.3
 
 # 버전 생략 시 latest 사용 (기본값)
-./go-updater private sync github.com/my-org/private-lib
+./gu private sync github.com/my-org/private-lib
 
 # 재시도 횟수 지정
-./go-updater private sync --retries 5 github.com/my-org/private-lib@v1.2.3
+./gu private sync --retries 5 github.com/my-org/private-lib@v1.2.3
 ```
 
 동기화 메타데이터는 `~/.go/private/metadata.json`에 기록됩니다.
@@ -119,10 +119,10 @@ go build -o go-updater
 
 ```bash
 # export 스크립트 출력
-./go-updater private env
+./gu private env
 
 # 오프라인 우선 모드(GOPROXY=off 포함)
-./go-updater private env --offline
+./gu private env --offline
 ```
 
 출력된 환경변수를 소비 프로젝트 셸에 적용한 뒤 `go build`, `go test`를 실행하면 동일 캐시를 재사용할 수 있습니다.
@@ -131,13 +131,13 @@ go build -o go-updater
 
 ```bash
 # N일 이전 파일 정리
-./go-updater private clean --stale-days 30
+./gu private clean --stale-days 30
 
 # 최대 용량(MB) 초과 시 오래된 파일부터 정리
-./go-updater private clean --max-size-mb 2048
+./gu private clean --max-size-mb 2048
 
 # 캐시 전체 삭제
-./go-updater private clean --all
+./gu private clean --all
 ```
 
 ### 보안 주의사항

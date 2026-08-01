@@ -28,7 +28,7 @@ var listCmd = &cobra.Command{
 		entries, err := os.ReadDir(versionsDir)
 		if err != nil {
 			if os.IsNotExist(err) {
-				fmt.Println("설치된 Go 버전이 없습니다. 'go-updater install' 명령어를 사용하여 설치하세요.")
+				fmt.Println("설치된 Go 버전이 없습니다. 'gu install' 명령어를 사용하여 설치하세요.")
 				return
 			}
 			slog.Error("failed to read versions directory", "error", err)
