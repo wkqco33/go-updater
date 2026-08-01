@@ -7,50 +7,49 @@ vars:
 tasks:
   default:
     desc: 사용 가능한 명령 보기
-    cmds:
-      - task: help
+    deps: [help]
 
   build:
     desc: 바이너리 빌드
     cmds:
-      - go build -o {{.BIN_NAME}} .
+      - 'go build -o {{.BIN_NAME}} .'
 
   clean:
     desc: 빌드 결과물 삭제
     cmds:
-      - rm -f {{.BIN_NAME}}
+      - 'rm -f {{.BIN_NAME}}'
 
   install:
     desc: 빌드 후 바이너리 설치
     deps: [build]
     cmds:
-      - mkdir -p {{.INSTALL_DIR}}
-      - cp {{.BIN_NAME}} {{.INSTALL_DIR}}/{{.BIN_NAME}}
-      - echo "설치 완료: {{.INSTALL_DIR}}/{{.BIN_NAME}}"
+      - 'mkdir -p {{.INSTALL_DIR}}'
+      - 'cp {{.BIN_NAME}} {{.INSTALL_DIR}}/{{.BIN_NAME}}'
+      - 'echo "설치 완료: {{.INSTALL_DIR}}/{{.BIN_NAME}}"'
 
   uninstall:
     desc: 설치된 바이너리 삭제
     cmds:
-      - rm -f {{.INSTALL_DIR}}/{{.BIN_NAME}}
-      - echo "삭제 완료: {{.INSTALL_DIR}}/{{.BIN_NAME}}"
+      - 'rm -f {{.INSTALL_DIR}}/{{.BIN_NAME}}'
+      - 'echo "삭제 완료: {{.INSTALL_DIR}}/{{.BIN_NAME}}"'
 
   test:
     desc: 테스트 실행
     cmds:
-      - go test ./...
+      - 'go test ./...'
 
   lint:
     desc: go vet 실행
     cmds:
-      - go vet ./...
+      - 'go vet ./...'
 
   help:
     desc: 명령어 도움말
     cmds:
-      - echo "사용 가능한 명령:"
-      - echo "  task build     - 바이너리 빌드"
-      - echo "  task clean     - 빌드 결과물 삭제"
-      - echo "  task install   - 빌드 후 {{.INSTALL_DIR}}에 설치"
-      - echo "  task uninstall - 설치된 바이너리 삭제"
-      - echo "  task test      - 테스트 실행"
-      - echo "  task lint      - go vet 실행"
+      - 'echo "사용 가능한 명령:"'
+      - 'echo "  task build     - 바이너리 빌드"'
+      - 'echo "  task clean     - 빌드 결과물 삭제"'
+      - 'echo "  task install   - 빌드 후 {{.INSTALL_DIR}}에 설치"'
+      - 'echo "  task uninstall - 설치된 바이너리 삭제"'
+      - 'echo "  task test      - 테스트 실행"'
+      - 'echo "  task lint      - go vet 실행"'
