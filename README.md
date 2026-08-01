@@ -112,7 +112,7 @@ gu clean --unused
 # 모든 Go 버전 및 관련 파일 삭제
 gu clean --all
 
-# go.dev에서 설치된 시스템 Go 삭제 (/usr/local/go 또는 C:\Go)
+# go.dev에서 설치된 시스템 Go 삭제
 gu clean --system
 ```
 
@@ -120,7 +120,12 @@ gu clean --system
 |---|---|
 | `--all` | 모든 설치된 Go 버전을 삭제합니다 (복구 불가) |
 | `--unused` | 현재 사용 중인 버전을 제외한 모든 버전을 삭제합니다 |
-| `--system` | go.dev에서 설치된 시스템 Go(`/usr/local/go` 또는 `C:\Go`)를 삭제합니다 |
+| `--system` | go.dev에서 설치된 시스템 Go를 삭제합니다 |
+
+**`--system` 플래그 동작:**
+
+- **macOS**: go.dev `.pkg` 인스톨러가 남기는 세 가지 흔적(`/usr/local/go`, `/etc/paths.d/go`, `pkgutil` 설치 리시트)을 각각 감지하여 실제로 남아있는 것만 정리합니다. 세 흔적 중 일부만 남아있어도(예: 디렉토리는 이미 지웠지만 리시트가 남은 경우) 정상적으로 감지·정리합니다. root 권한이 필요한 항목은 실행할 명령어를 먼저 보여준 뒤 확인을 거쳐 `sudo`로 실행하며, 이때 sudo 비밀번호를 물을 수 있습니다. `/etc/paths.d/go`를 삭제한 경우 **새 터미널 세션부터** PATH 변경이 반영됩니다. Homebrew로 설치된 Go는 감지만 하고 삭제하지 않으며, `brew uninstall go`를 안내합니다.
+- **Windows**: `C:\Go` 경로를 확인해 삭제합니다.
 
 ### 5. 버전 확인 (`version`)
 

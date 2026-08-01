@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+
+	"go_updater/internal/systemgo"
 
 	"github.com/spf13/cobra"
 )
@@ -18,14 +19,6 @@ var (
 	cleanSystem bool
 )
 
-// systemGoPath returns the default installation path used by go.dev installers.
-func systemGoPath() string {
-	if runtime.GOOS == "windows" {
-		return `C:\Go`
-	}
-	return "/usr/local/go"
-}
-
 // confirmAction asks the user to confirm by typing 'y' or 'Y'.
 func confirmAction(prompt string) bool {
 	fmt.Printf("%s [y/N]: ", prompt)
@@ -35,6 +28,91 @@ func confirmAction(prompt string) bool {
 		return strings.EqualFold(answer, "y")
 	}
 	return false
+}
+
+// artifactLabel returns the human-readable name shown in the detection
+// checklist for one artifact.
+func artifactLabel(a systemgo.Artifact) string {
+	switch a.Kind {
+	case systemgo.KindReceipt:
+		return "pkgutil 리시트 " + a.Path
+	case systemgo.KindHomebrew:
+		return "Homebrew Go (" + a.Path + ")"
+	default:
+		return a.Path
+	}
+}
+
+// runCleanSystem detects go.dev pkg / Homebrew Go installations and, after
+// showing exactly which commands will run, removes what gu is allowed to
+// manage. Root-owned paths are removed via sudo, prompting for a password.
+func runCleanSystem() {
+	items, err := systemgo.Detect()
+	if err != nil {
+		slog.Error("failed to detect system Go installation", "error", err)
+		os.Exit(1)
+	}
+	if len(items) == 0 {
+		fmt.Println("감지된 시스템 Go 설치가 없습니다.")
+		return
+	}
+
+	var pkgItems, homebrewItems []systemgo.Present
+	for _, item := range items {
+		if item.Artifact.Kind == systemgo.KindHomebrew {
+			homebrewItems = append(homebrewItems, item)
+		} else {
+			pkgItems = append(pkgItems, item)
+		}
+	}
+
+	if len(pkgItems) > 0 {
+		fmt.Println("감지된 go.dev pkg 설치:")
+		for _, item := range pkgItems {
+			line := "  [x] " + artifactLabel(item.Artifact)
+			if !item.Exists {
+				line += " (없음)"
+			} else {
+				line = "  [v] " + artifactLabel(item.Artifact)
+				if item.Artifact.Detail != "" {
+					line += " " + item.Artifact.Detail
+				}
+			}
+			fmt.Println(line)
+		}
+	}
+	for _, item := range homebrewItems {
+		fmt.Printf("Homebrew로 설치된 Go가 감지되었습니다: %s\n", item.Artifact.Path)
+		fmt.Println("gu는 Homebrew 설치를 삭제하지 않습니다. 삭제하려면 'brew uninstall go'를 사용하세요.")
+	}
+
+	plan := systemgo.Plan(items)
+	if len(plan) == 0 {
+		return
+	}
+
+	fmt.Println("\n다음 명령이 실행됩니다:")
+	for _, step := range plan {
+		fmt.Println("  " + step.Display)
+	}
+
+	if !confirmAction("\n계속하시겠습니까?") {
+		fmt.Println("취소되었습니다.")
+		return
+	}
+
+	if err := systemgo.Remove(plan); err != nil {
+		slog.Error("failed to remove system Go installation", "error", err)
+		fmt.Printf("일부 항목을 삭제하지 못했습니다: %v\n권한이 필요한 경우 sudo 비밀번호를 다시 확인하세요.\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("시스템 Go 설치가 성공적으로 삭제되었습니다.")
+	for _, step := range plan {
+		if step.Artifact.Kind == systemgo.KindFile && step.Artifact.Path == systemgo.PathsDGo {
+			fmt.Println("참고: 현재 열려 있는 셸의 PATH에는 여전히 이전 경로가 남아있을 수 있습니다. 새 터미널 세션을 여세요.")
+		}
+	}
 }
 
 var cleanCmd = &cobra.Command{
@@ -134,25 +212,7 @@ var cleanCmd = &cobra.Command{
 
 		// 4. Handle --system flag: remove go.dev system installation
 		if cleanSystem {
-			sysPath := systemGoPath()
-			if _, err := os.Stat(sysPath); os.IsNotExist(err) {
-				fmt.Printf("go.dev 시스템 설치 경로(%s)에서 Go를 찾을 수 없습니다.\n", sysPath)
-				return
-			}
-
-			fmt.Printf("go.dev에서 설치된 Go가 다음 경로에서 감지되었습니다: %s\n", sysPath)
-			if !confirmAction("해당 경로의 Go를 삭제하시겠습니까?") {
-				fmt.Println("취소되었습니다.")
-				return
-			}
-
-			fmt.Printf("시스템 Go 설치를 삭제합니다: %s\n", sysPath)
-			if err := os.RemoveAll(sysPath); err != nil {
-				slog.Error("failed to remove system Go installation", "path", sysPath, "error", err)
-				fmt.Printf("삭제 실패: %v\n권한이 필요한 경우 sudo를 사용하세요.\n", err)
-				os.Exit(1)
-			}
-			fmt.Printf("시스템 Go 설치(%s)가 성공적으로 삭제되었습니다.\n", sysPath)
+			runCleanSystem()
 			return
 		}
 
@@ -164,6 +224,6 @@ var cleanCmd = &cobra.Command{
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "모든 설치된 Go 버전을 삭제합니다.")
 	cleanCmd.Flags().BoolVar(&cleanUnused, "unused", false, "현재 사용 중인 버전을 제외한 모든 설치된 버전을 삭제합니다.")
-	cleanCmd.Flags().BoolVar(&cleanSystem, "system", false, "go.dev에서 설치된 시스템 Go(/usr/local/go 또는 C:\\Go)를 삭제합니다.")
+	cleanCmd.Flags().BoolVar(&cleanSystem, "system", false, "go.dev에서 설치된 시스템 Go를 삭제합니다 (macOS: /usr/local/go, /etc/paths.d/go, pkgutil 리시트 포함 / Windows: C:\\Go).")
 	rootCmd.AddCommand(cleanCmd)
 }

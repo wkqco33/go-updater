@@ -1,5 +1,11 @@
 # 변경 이력 (Change Log)
 
+## [Unreleased]
+### 변경 (Changed)
+- `clean --system`이 macOS에서 go.dev `.pkg` 설치의 세 가지 흔적(`/usr/local/go`, `/etc/paths.d/go`, `pkgutil` 리시트)을 개별적으로 감지하고 정리하도록 개선했습니다. 이전에는 `/usr/local/go` 디렉토리 존재 여부만 확인해, 디렉토리를 수동 삭제한 뒤에도 남아있는 PATH 설정과 설치 리시트를 정리하지 못했습니다.
+- root 권한이 필요한 삭제 단계는 실행될 명령을 먼저 출력하고 확인을 받은 뒤 `sudo`로 재시도합니다.
+- Homebrew로 설치된 Go는 감지만 하고 삭제하지 않으며 `brew uninstall go`를 안내합니다.
+
 ## [2.2.0] - 2026-08-01
 ### 변경 (Changed)
 - 빌드/테스트/설치 관리 도구를 `Makefile`에서 `Taskfile.yml`로 전환했습니다.
