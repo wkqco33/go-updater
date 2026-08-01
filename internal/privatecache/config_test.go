@@ -1,6 +1,7 @@
 package privatecache
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -27,5 +28,56 @@ func TestBuildEnv(t *testing.T) {
 	}
 	if env["GOMODCACHE"] == "" {
 		t.Fatalf("expected GOMODCACHE to be set")
+	}
+}
+
+func TestLoadConfigUsesDefaultsWhenFileIsMissing(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.Version != 1 {
+		t.Fatalf("expected default version 1, got %d", cfg.Version)
+	}
+	if cfg.CacheDir == "" {
+		t.Fatal("expected default cache dir to be set")
+	}
+}
+
+func TestSaveConfigPersistsNormalizedValues(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	cfg := Config{
+		PrivatePatterns: []string{" github.com/acme/* ", "", "github.com/acme/*"},
+		CacheDir:        "  /tmp/go-cache  ",
+	}
+
+	if err := SaveConfig(cfgPath, cfg); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+
+	loaded, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if loaded.CacheDir != "/tmp/go-cache" {
+		t.Fatalf("expected trimmed cache dir, got %q", loaded.CacheDir)
+	}
+	if len(loaded.PrivatePatterns) != 1 || loaded.PrivatePatterns[0] != "github.com/acme/*" {
+		t.Fatalf("expected normalized private patterns, got %v", loaded.PrivatePatterns)
+	}
+	if len(loaded.NoSumDBPatterns) != 1 || loaded.NoSumDBPatterns[0] != "github.com/acme/*" {
+		t.Fatalf("expected default nosumdb patterns, got %v", loaded.NoSumDBPatterns)
+	}
+}
+
+func TestSaveConfigRejectsEmptyCacheDir(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	err := SaveConfig(cfgPath, Config{CacheDir: "   "})
+	if err == nil {
+		t.Fatal("expected error for empty cache dir")
+	}
+	if _, statErr := os.Stat(cfgPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected config file to not be created, stat err = %v", statErr)
 	}
 }

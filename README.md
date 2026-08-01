@@ -33,7 +33,7 @@ task install
 그 외 사용 가능한 task 명령어:
 
 | 명령어 | 설명 |
-|---|---|
+| --- | --- |
 | `task build` | 바이너리 빌드 |
 | `task clean` | 빌드 결과물 삭제 |
 | `task install` | 빌드 후 `~/.local/bin`에 설치 |
@@ -117,7 +117,7 @@ gu clean --system
 ```
 
 | 플래그 | 설명 |
-|---|---|
+| --- | --- |
 | `--all` | 모든 설치된 Go 버전을 삭제합니다 (복구 불가) |
 | `--unused` | 현재 사용 중인 버전을 제외한 모든 버전을 삭제합니다 |
 | `--system` | go.dev에서 설치된 시스템 Go를 삭제합니다 |
@@ -205,7 +205,7 @@ gu private config show
 `private config set` 명령의 플래그:
 
 | 플래그 | 설명 |
-|---|---|
+| --- | --- |
 | `--private` | GOPRIVATE 패턴 (쉼표 구분) |
 | `--cache-dir` | 모듈 캐시 디렉토리 경로 |
 | `--nosumdb` | GONOSUMDB 패턴 (쉼표 구분) |
@@ -235,7 +235,7 @@ gu private sync --source github-enterprise github.com/my-org/private-lib@v1.2.3
 `private sync` 명령의 플래그:
 
 | 플래그 | 기본값 | 설명 |
-|---|---|---|
+| --- | --- | --- |
 | `--retries` | `3` | 모듈 다운로드 재시도 횟수 |
 | `--latest-if-missing` | `true` | 버전 미지정 시 latest 사용 |
 | `--source` | `manual` | 동기화 소스 식별자 (예: `github-enterprise`) |
@@ -275,7 +275,7 @@ gu private clean --all
 ```
 
 | 플래그 | 기본값 | 설명 |
-|---|---|---|
+| --- | --- | --- |
 | `--stale-days` | `0` | N일 이전의 오래된 파일만 삭제 |
 | `--max-size-mb` | `0` | 캐시가 지정 MB를 초과할 경우 오래된 파일부터 삭제 |
 | `--all` | `false` | 캐시 전체 및 메타데이터를 삭제 |
@@ -299,7 +299,7 @@ export PATH=$PATH:~/.go/current/bin
 ## 명령어 레퍼런스
 
 | 명령어 | 설명 |
-|---|---|
+| --- | --- |
 | `gu install [version]` | Go를 설치하거나 특정 버전으로 업데이트 |
 | `gu list` | 설치된 Go 버전 목록 출력 |
 | `gu use <version>` | 설치된 특정 버전의 Go로 전환 |
