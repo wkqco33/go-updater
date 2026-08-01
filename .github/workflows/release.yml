@@ -41,9 +41,12 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          BIN_NAME="gu${{ matrix.suffix }}"
+          BIN_NAME="gu"
+          if [ "$GOOS" = "windows" ]; then
+            BIN_NAME="gu.exe"
+          fi
           go build -o "${BIN_NAME}" .
-          tar -czf "gu_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz" "${BIN_NAME}"
+          tar -czf "gu_${GOOS}_${GOARCH}.tar.gz" "${BIN_NAME}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
