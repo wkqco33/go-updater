@@ -193,10 +193,8 @@ func UpdateCurrentSymlink(targetDir, goDir string) error {
 		if runtime.GOOS == "windows" {
 			slog.Debug("symlink failed, trying mklink /J", "error", err)
 			cmd := exec.Command("cmd", "/c", "mklink", "/J", currentLink, goDir)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			if mklinkErr := cmd.Run(); mklinkErr != nil {
-				return fmt.Errorf("failed to create symlink/junction for current version: %w\nWindows에서 심볼릭 링크를 생성하려면 개발자 모드를 활성화하거나 관리자 권한으로 실행하세요.", err)
+			if out, mklinkErr := cmd.CombinedOutput(); mklinkErr != nil {
+				return fmt.Errorf("failed to create symlink/junction for current version: %w (%s)\nWindows에서 심볼릭 링크를 생성하려면 개발자 모드를 활성화하거나 관리자 권한으로 실행하세요.", err, strings.TrimSpace(string(out)))
 			}
 			return nil
 		}
