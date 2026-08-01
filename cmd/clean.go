@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,7 +15,27 @@ import (
 var (
 	cleanAll    bool
 	cleanUnused bool
+	cleanSystem bool
 )
+
+// systemGoPath returns the default installation path used by go.dev installers.
+func systemGoPath() string {
+	if runtime.GOOS == "windows" {
+		return `C:\Go`
+	}
+	return "/usr/local/go"
+}
+
+// confirmAction asks the user to confirm by typing 'y' or 'Y'.
+func confirmAction(prompt string) bool {
+	fmt.Printf("%s [y/N]: ", prompt)
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		answer := strings.TrimSpace(scanner.Text())
+		return strings.EqualFold(answer, "y")
+	}
+	return false
+}
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean [version]",
@@ -110,7 +132,31 @@ var cleanCmd = &cobra.Command{
 			return
 		}
 
-		// 4. Default: No args and no flags
+		// 4. Handle --system flag: remove go.dev system installation
+		if cleanSystem {
+			sysPath := systemGoPath()
+			if _, err := os.Stat(sysPath); os.IsNotExist(err) {
+				fmt.Printf("go.dev 시스템 설치 경로(%s)에서 Go를 찾을 수 없습니다.\n", sysPath)
+				return
+			}
+
+			fmt.Printf("go.dev에서 설치된 Go가 다음 경로에서 감지되었습니다: %s\n", sysPath)
+			if !confirmAction("해당 경로의 Go를 삭제하시겠습니까?") {
+				fmt.Println("취소되었습니다.")
+				return
+			}
+
+			fmt.Printf("시스템 Go 설치를 삭제합니다: %s\n", sysPath)
+			if err := os.RemoveAll(sysPath); err != nil {
+				slog.Error("failed to remove system Go installation", "path", sysPath, "error", err)
+				fmt.Printf("삭제 실패: %v\n권한이 필요한 경우 sudo를 사용하세요.\n", err)
+				os.Exit(1)
+			}
+			fmt.Printf("시스템 Go 설치(%s)가 성공적으로 삭제되었습니다.\n", sysPath)
+			return
+		}
+
+		// 5. Default: No args and no flags
 		cmd.Help()
 	},
 }
@@ -118,5 +164,6 @@ var cleanCmd = &cobra.Command{
 func init() {
 	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "모든 설치된 Go 버전을 삭제합니다.")
 	cleanCmd.Flags().BoolVar(&cleanUnused, "unused", false, "현재 사용 중인 버전을 제외한 모든 설치된 버전을 삭제합니다.")
+	cleanCmd.Flags().BoolVar(&cleanSystem, "system", false, "go.dev에서 설치된 시스템 Go(/usr/local/go 또는 C:\\Go)를 삭제합니다.")
 	rootCmd.AddCommand(cleanCmd)
 }
