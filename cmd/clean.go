@@ -38,6 +38,8 @@ func artifactLabel(a systemgo.Artifact) string {
 		return "pkgutil 리시트 " + a.Path
 	case systemgo.KindHomebrew:
 		return "Homebrew Go (" + a.Path + ")"
+	case systemgo.KindWinget:
+		return "winget Go (" + a.Path + ")"
 	default:
 		return a.Path
 	}

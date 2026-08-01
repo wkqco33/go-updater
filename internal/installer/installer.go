@@ -1,6 +1,7 @@
 package installer
 
 import (
+	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -113,11 +115,8 @@ func ExtractArchive(archivePath, destDir string) error {
 	}
 
 	if runtime.GOOS == "windows" {
-		slog.Debug("executing powershell Expand-Archive")
-		cmd := exec.Command("powershell", "-command", fmt.Sprintf("Expand-Archive -Path '%s' -DestinationPath '%s' -Force", archivePath, destDir))
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		slog.Debug("extracting zip with archive/zip")
+		if err := extractZip(archivePath, destDir); err != nil {
 			return fmt.Errorf("failed to extract zip: %w", err)
 		}
 	} else {
@@ -133,12 +132,74 @@ func ExtractArchive(archivePath, destDir string) error {
 	return nil
 }
 
+// extractZip extracts a ZIP archive to the destination directory using Go's
+// standard archive/zip package, avoiding dependency on PowerShell.
+func extractZip(archivePath, destDir string) error {
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open zip archive: %w", err)
+	}
+	defer r.Close()
+
+	for _, f := range r.File {
+		fpath := filepath.Join(destDir, f.Name)
+
+		if !strings.HasPrefix(filepath.Clean(fpath), filepath.Clean(destDir)+string(os.PathSeparator)) {
+			return fmt.Errorf("illegal file path: %s", fpath)
+		}
+
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(fpath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", fpath, err)
+			}
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(fpath), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory for %s: %w", fpath, err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open %s in archive: %w", f.Name, err)
+		}
+
+		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		if err != nil {
+			rc.Close()
+			return fmt.Errorf("failed to create file %s: %w", fpath, err)
+		}
+
+		_, err = io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+		if err != nil {
+			return fmt.Errorf("failed to write file %s: %w", fpath, err)
+		}
+	}
+
+	return nil
+}
+
 // UpdateCurrentSymlink updates the 'current' symlink in targetDir to point to goDir.
+// On Windows, falls back to directory junction (mklink /J) if symlink creation
+// fails due to insufficient privileges.
 func UpdateCurrentSymlink(targetDir, goDir string) error {
 	currentLink := filepath.Join(targetDir, "current")
 	slog.Debug("updating current symlink", "link", currentLink, "target", goDir)
-	os.Remove(currentLink)
+	os.RemoveAll(currentLink)
+
 	if err := os.Symlink(goDir, currentLink); err != nil {
+		if runtime.GOOS == "windows" {
+			slog.Debug("symlink failed, trying mklink /J", "error", err)
+			cmd := exec.Command("cmd", "/c", "mklink", "/J", currentLink, goDir)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if mklinkErr := cmd.Run(); mklinkErr != nil {
+				return fmt.Errorf("failed to create symlink/junction for current version: %w\nWindows에서 심볼릭 링크를 생성하려면 개발자 모드를 활성화하거나 관리자 권한으로 실행하세요.", err)
+			}
+			return nil
+		}
 		return fmt.Errorf("failed to create symlink for current version: %w", err)
 	}
 	return nil

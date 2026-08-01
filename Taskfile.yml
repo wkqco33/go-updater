@@ -1,7 +1,7 @@
 version: "3"
 
 vars:
-  BIN_NAME: gu
+  BIN_NAME: 'gu{{exeExt}}'
   INSTALL_DIR: '{{.HOME}}/.local/bin'
 
 tasks:

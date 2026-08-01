@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 )
 
 // PlannedCommand is one privileged removal step, shown to the user before
@@ -33,17 +34,32 @@ func Plan(items []Present) []PlannedCommand {
 		switch item.Artifact.Kind {
 		case KindDir:
 			if isSymlink(item.Artifact.Path) {
-				plan = append(plan, PlannedCommand{item.Artifact, "sudo " + binRm + " -f " + item.Artifact.Path})
+				plan = append(plan, PlannedCommand{item.Artifact, displayRemove(item.Artifact.Path, true)})
 			} else {
-				plan = append(plan, PlannedCommand{item.Artifact, "sudo " + binRm + " -rf " + item.Artifact.Path})
+				plan = append(plan, PlannedCommand{item.Artifact, displayRemove(item.Artifact.Path, false)})
 			}
 		case KindFile:
-			plan = append(plan, PlannedCommand{item.Artifact, "sudo " + binRm + " -f " + item.Artifact.Path})
+			plan = append(plan, PlannedCommand{item.Artifact, displayRemove(item.Artifact.Path, true)})
 		case KindReceipt:
 			plan = append(plan, PlannedCommand{item.Artifact, "sudo " + binPkgutil + " --forget " + item.Artifact.Path})
+		case KindWinget:
+			plan = append(plan, PlannedCommand{item.Artifact, "winget uninstall GoLang.Go"})
 		}
 	}
 	return plan
+}
+
+func displayRemove(path string, force bool) string {
+	if runtime.GOOS == "windows" {
+		if force {
+			return fmt.Sprintf("Remove-Item -Recurse -Force '%s'", path)
+		}
+		return fmt.Sprintf("Remove-Item -Recurse '%s'", path)
+	}
+	if force {
+		return "sudo " + binRm + " -f " + path
+	}
+	return "sudo " + binRm + " -rf " + path
 }
 
 // Remove executes every step in plan, escalating to sudo when a plain
@@ -68,6 +84,8 @@ func removeOne(a Artifact) error {
 		return removePathWithSudoFallback(a.Path, false)
 	case KindReceipt:
 		return runCommandPrivileged(binPkgutil, "--forget", a.Path)
+	case KindWinget:
+		return runWingetUninstall()
 	default:
 		return fmt.Errorf("unsupported artifact kind for %s", a.Path)
 	}
@@ -80,6 +98,9 @@ func removePathWithSudoFallback(path string, recursive bool) error {
 		if err := os.Remove(path); err == nil || !isPermissionErr(err) {
 			return err
 		}
+		if runtime.GOOS == "windows" {
+			return fmt.Errorf("권한이 부족합니다. 관리자 권한으로 gu를 실행하거나 수동으로 삭제하세요: %s", path)
+		}
 		return runCommandPrivileged(binRm, "-f", path)
 	}
 
@@ -90,13 +111,31 @@ func removePathWithSudoFallback(path string, recursive bool) error {
 		if err := os.RemoveAll(path); err == nil || !isPermissionErr(err) {
 			return err
 		}
+		if runtime.GOOS == "windows" {
+			return fmt.Errorf("권한이 부족합니다. 관리자 권한으로 gu를 실행하거나 수동으로 삭제하세요: %s", path)
+		}
 		return runCommandPrivileged(binRm, "-rf", path)
 	}
 
 	if err := os.Remove(path); err == nil || !isPermissionErr(err) {
 		return err
 	}
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("권한이 부족합니다. 관리자 권한으로 gu를 실행하거나 수동으로 삭제하세요: %s", path)
+	}
 	return runCommandPrivileged(binRm, "-f", path)
+}
+
+func runWingetUninstall() error {
+	wingetPath, err := exec.LookPath("winget")
+	if err != nil {
+		return fmt.Errorf("winget을 찾을 수 없습니다. 'winget uninstall GoLang.Go'를 직접 실행하세요")
+	}
+	cmd := exec.Command(wingetPath, "uninstall", "GoLang.Go")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 func isSymlink(path string) bool {

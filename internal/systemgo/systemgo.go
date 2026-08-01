@@ -15,6 +15,8 @@ const (
 	KindReceipt
 	// KindHomebrew is a Homebrew-managed Go install; detected but never removed.
 	KindHomebrew
+	// KindWinget is a winget-managed Go install; removed via winget uninstall.
+	KindWinget
 )
 
 // Artifact describes one leftover trace of a system Go installation.
