@@ -181,6 +181,15 @@ func extractZip(archivePath, destDir string) error {
 	return nil
 }
 
+func removeCurrentLink(path string) {
+	// os.RemoveAll은 symlink를 따라가지 않고 링크 자체만 제거한다.
+	// Windows의 기존 디렉터리 심볼릭 링크는 os.Remove로 안 지워질 수 있어
+	// RemoveAll을 사용한다.
+	if err := os.RemoveAll(path); err != nil {
+		slog.Debug("failed to remove existing current link", "path", path, "error", err)
+	}
+}
+
 // UpdateCurrentSymlink updates the 'current' symlink in targetDir to point to goDir.
 // On Windows, falls back to directory junction (mklink /J) if symlink creation
 // fails due to insufficient privileges.
@@ -193,6 +202,8 @@ func UpdateCurrentSymlink(targetDir, goDir string) error {
 	if err := os.Symlink(goDir, tmpLink); err != nil {
 		if runtime.GOOS == "windows" {
 			slog.Debug("symlink failed, trying mklink /J", "error", err)
+			// mklink /J는 대상 경로가 이미 존재하면 실패하므로 기존 링크를 먼저 제거한다.
+			removeCurrentLink(currentLink)
 			cmd := exec.Command("cmd", "/c", "mklink", "/J", currentLink, goDir)
 			if out, mklinkErr := cmd.CombinedOutput(); mklinkErr != nil {
 				return fmt.Errorf("failed to create symlink/junction for current version: %w (%s)\nWindows에서 심볼릭 링크를 생성하려면 개발자 모드를 활성화하거나 관리자 권한으로 실행하세요.", err, strings.TrimSpace(string(out)))
@@ -200,6 +211,11 @@ func UpdateCurrentSymlink(targetDir, goDir string) error {
 			return nil
 		}
 		return fmt.Errorf("failed to create symlink for current version: %w", err)
+	}
+	if runtime.GOOS == "windows" {
+		// Windows는 os.Rename으로 기존 디렉터리 심볼릭 링크를 원자적으로 덮어쓸 수
+		// 없어 "Access is denied"가 발생한다. 따라서 기존 링크를 제거 후 교체한다.
+		removeCurrentLink(currentLink)
 	}
 	if err := os.Rename(tmpLink, currentLink); err != nil {
 		_ = os.Remove(tmpLink)
