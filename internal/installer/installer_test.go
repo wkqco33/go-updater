@@ -1,9 +1,14 @@
 package installer
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -89,6 +94,60 @@ func TestExtractZipRejectsPathTraversal(t *testing.T) {
 	}
 }
 
+func TestInstallGoKeepsExistingVersionWhenArchiveIsInvalid(t *testing.T) {
+	archive := makeTarGz(t, map[string]string{"readme.txt": "not a Go distribution"})
+	sum := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	target := t.TempDir()
+	final := filepath.Join(target, "versions", "go1.23.0")
+	if err := os.MkdirAll(final, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldFile := filepath.Join(final, "old.txt")
+	if err := os.WriteFile(oldFile, []byte("keep me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0")
+	if err == nil {
+		t.Fatal("InstallGo() error = nil for invalid distribution")
+	}
+	got, readErr := os.ReadFile(oldFile)
+	if readErr != nil {
+		t.Fatalf("existing installation was not preserved: %v", readErr)
+	}
+	if string(got) != "keep me" {
+		t.Fatalf("existing file = %q", got)
+	}
+}
+
+func makeTarGz(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(content))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
 func TestUpdateCurrentSymlink(t *testing.T) {
 	dir := t.TempDir()
 	goDir := filepath.Join(dir, "versions", "go1.23.0")
@@ -105,5 +164,20 @@ func TestUpdateCurrentSymlink(t *testing.T) {
 	}
 	if got != goDir {
 		t.Fatalf("symlink target = %q, want %q", got, goDir)
+	}
+
+	otherDir := filepath.Join(dir, "versions", "go1.24.0")
+	if err := os.MkdirAll(otherDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpdateCurrentSymlink(dir, otherDir); err != nil {
+		t.Fatalf("second update error = %v", err)
+	}
+	got, err = os.Readlink(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != otherDir {
+		t.Fatalf("updated symlink target = %q, want %q", got, otherDir)
 	}
 }

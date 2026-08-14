@@ -186,10 +186,11 @@ func extractZip(archivePath, destDir string) error {
 // fails due to insufficient privileges.
 func UpdateCurrentSymlink(targetDir, goDir string) error {
 	currentLink := filepath.Join(targetDir, "current")
+	tmpLink := filepath.Join(targetDir, ".current.tmp")
 	slog.Debug("updating current symlink", "link", currentLink, "target", goDir)
-	os.RemoveAll(currentLink)
+	_ = os.Remove(tmpLink)
 
-	if err := os.Symlink(goDir, currentLink); err != nil {
+	if err := os.Symlink(goDir, tmpLink); err != nil {
 		if runtime.GOOS == "windows" {
 			slog.Debug("symlink failed, trying mklink /J", "error", err)
 			cmd := exec.Command("cmd", "/c", "mklink", "/J", currentLink, goDir)
@@ -200,12 +201,20 @@ func UpdateCurrentSymlink(targetDir, goDir string) error {
 		}
 		return fmt.Errorf("failed to create symlink for current version: %w", err)
 	}
+	if err := os.Rename(tmpLink, currentLink); err != nil {
+		_ = os.Remove(tmpLink)
+		return fmt.Errorf("failed to atomically replace current link: %w", err)
+	}
 	return nil
 }
 
 // InstallGo handles the complete flow of downloading and installing.
 func InstallGo(url, sha256Str string, targetDir string, version string) error {
-	tmpDir := os.TempDir()
+	tmpDir, err := os.MkdirTemp("", "go-updater-install-*")
+	if err != nil {
+		return fmt.Errorf("failed to create install temp directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
 	archivePath := filepath.Join(tmpDir, filepath.Base(url))
 	slog.Debug("install process started", "tmp_archive", archivePath, "target_dir", targetDir, "version", version)
 
@@ -215,7 +224,6 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(archivePath)
 
 	// 2. Verify
 	slog.Debug("checksum calculated", "actual", actualSha256, "expected", sha256Str)
@@ -233,14 +241,10 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	}
 
 	slog.Debug("checking for existing installation", "path", finalGoDir)
-	if _, err := os.Stat(finalGoDir); err == nil {
-		fmt.Printf("Removing existing Go installation at %s...\n", finalGoDir)
-		if err := os.RemoveAll(finalGoDir); err != nil {
-			return fmt.Errorf("failed to remove existing go installation: %w", err)
-		}
-	}
 
-	// 4. Extract (archive contains a 'go' folder, so extract to temp, then rename)
+	// 4. Extract into staging. The existing installation is preserved until
+	// the staged archive has been completely prepared.
+
 	extractTmp := filepath.Join(versionsDir, fmt.Sprintf("tmp_%s", version))
 	if err := os.RemoveAll(extractTmp); err != nil {
 		return err
@@ -251,16 +255,32 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 		return err
 	}
 
-	// The archive extracts a directory named "go", rename it to the version name
+	// The archive extracts a directory named "go", rename it to the version name.
 	extractedGoDir := filepath.Join(extractTmp, "go")
+	if _, err := os.Stat(extractedGoDir); err != nil {
+		os.RemoveAll(extractTmp)
+		return fmt.Errorf("archive does not contain a go directory: %w", err)
+	}
+	backupDir := finalGoDir + ".old"
+	_ = os.RemoveAll(backupDir)
+	if _, err := os.Stat(finalGoDir); err == nil {
+		if err := os.Rename(finalGoDir, backupDir); err != nil {
+			os.RemoveAll(extractTmp)
+			return fmt.Errorf("failed to stage existing Go installation: %w", err)
+		}
+	}
 	if err := os.Rename(extractedGoDir, finalGoDir); err != nil {
+		_ = os.Rename(backupDir, finalGoDir)
 		os.RemoveAll(extractTmp)
 		return fmt.Errorf("failed to rename extracted directory: %w", err)
 	}
 	os.RemoveAll(extractTmp)
+	defer os.RemoveAll(backupDir)
 
 	// 5. Update current symlink
 	if err := UpdateCurrentSymlink(targetDir, finalGoDir); err != nil {
+		_ = os.RemoveAll(finalGoDir)
+		_ = os.Rename(backupDir, finalGoDir)
 		return err
 	}
 

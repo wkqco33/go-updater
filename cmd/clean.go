@@ -19,6 +19,7 @@ var (
 	cleanAll    bool
 	cleanUnused bool
 	cleanSystem bool
+	userHomeDir = os.UserHomeDir
 )
 
 // confirmAction asks the user to confirm by typing 'y' or 'Y'.
@@ -125,7 +126,7 @@ var cleanCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		slog.Debug("clean command started")
 
-		homeDir, err := os.UserHomeDir()
+		homeDir, err := userHomeDir()
 		if err != nil {
 			return fmt.Errorf("failed to get home directory: %w", err)
 		}
@@ -138,11 +139,11 @@ var cleanCmd = &cobra.Command{
 
 		// 1. Handle --all flag
 		if cleanAll {
-			fmt.Println("모든 설치된 Go 버전을 삭제합니다...")
+			fmt.Fprintln(cmd.OutOrStdout(), "모든 설치된 Go 버전을 삭제합니다...")
 			if err := store.RemoveAll(); err != nil {
 				return err
 			}
-			fmt.Println("모든 버전이 삭제되었습니다.")
+			fmt.Fprintln(cmd.OutOrStdout(), "모든 버전이 삭제되었습니다.")
 			return nil
 		}
 
@@ -155,39 +156,39 @@ var cleanCmd = &cobra.Command{
 			}
 
 			if targetVersion == currentVersion {
-				fmt.Printf("버전 %s는 현재 활성화되어 사용 중이므로 삭제할 수 없습니다. 'use' 명령어로 다른 버전으로 전환 후 삭제하세요.\n", targetVersion)
+				fmt.Fprintf(cmd.OutOrStdout(), "버전 %s는 현재 활성화되어 사용 중이므로 삭제할 수 없습니다. 'use' 명령어로 다른 버전으로 전환 후 삭제하세요.\n", targetVersion)
 				return nil
 			}
 
 			if _, err := store.Resolve(targetVersion); err != nil {
-				fmt.Printf("버전 %s가 설치되어 있지 않습니다.\n", targetVersion)
+				fmt.Fprintf(cmd.OutOrStdout(), "버전 %s가 설치되어 있지 않습니다.\n", targetVersion)
 				return nil
 			}
 
-			fmt.Printf("버전 %s를 삭제합니다...\n", targetVersion)
+			fmt.Fprintf(cmd.OutOrStdout(), "버전 %s를 삭제합니다...\n", targetVersion)
 			if err := store.Remove(targetVersion); err != nil {
 				return err
 			}
-			fmt.Printf("버전 %s가 성공적으로 삭제되었습니다.\n", targetVersion)
+			fmt.Fprintf(cmd.OutOrStdout(), "버전 %s가 성공적으로 삭제되었습니다.\n", targetVersion)
 			return nil
 		}
 
 		// 3. Handle --unused flag
 		if cleanUnused {
 			if currentVersion == "" {
-				fmt.Println("현재 활성화된 버전 정보가 없습니다. 모든 버전을 삭제하시려면 --all을 사용하세요.")
+				fmt.Fprintln(cmd.OutOrStdout(), "현재 활성화된 버전 정보가 없습니다. 모든 버전을 삭제하시려면 --all을 사용하세요.")
 				return nil
 			}
 
-			fmt.Printf("현재 사용 중인 버전(%s)을 제외한 모든 버전을 삭제합니다...\n", currentVersion)
+			fmt.Fprintf(cmd.OutOrStdout(), "현재 사용 중인 버전(%s)을 제외한 모든 버전을 삭제합니다...\n", currentVersion)
 			removed, err := store.RemoveUnused()
 			if err != nil {
 				return err
 			}
 			for _, version := range removed {
-				fmt.Printf("  삭제됨: %s\n", version)
+				fmt.Fprintf(cmd.OutOrStdout(), "  삭제됨: %s\n", version)
 			}
-			fmt.Printf("총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", len(removed))
+			fmt.Fprintf(cmd.OutOrStdout(), "총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", len(removed))
 			return nil
 		}
 
