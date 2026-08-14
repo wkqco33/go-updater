@@ -10,11 +10,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listHomeDir = os.UserHomeDir
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "설치된 Go 버전 목록을 출력합니다.",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		homeDir, err := os.UserHomeDir()
+		homeDir, err := listHomeDir()
 		if err != nil {
 			return fmt.Errorf("failed to get home directory: %w", err)
 		}
