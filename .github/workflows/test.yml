@@ -28,7 +28,7 @@ jobs:
       - name: Verify formatting
         shell: bash
         run: |
-          test -z "$(gofmt -l .)"
+          test -z "$(git ls-files -- '*.go' | xargs gofmt -l)"
 
       - name: Vet
         run: go vet ./...
