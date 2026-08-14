@@ -44,7 +44,7 @@ var useCmd = &cobra.Command{
 	Short: "설치된 특정 버전의 Go를 활성화합니다.",
 	Long:  `설치된 버전 목록 중 하나를 선택하여 활성화합니다. (예: 1.20, 1.20.5)`,
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		version := args[0]
 		targetVersion := version
 		if !strings.HasPrefix(targetVersion, "go") {
@@ -54,8 +54,7 @@ var useCmd = &cobra.Command{
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			slog.Error("failed to get home directory", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 		targetDir := filepath.Join(homeDir, ".go")
 		versionsDir := filepath.Join(targetDir, "versions")
@@ -82,26 +81,22 @@ var useCmd = &cobra.Command{
 						targetVersion = matchedVersion
 						slog.Debug("found prefix matched installed version", "matched", targetVersion)
 					} else {
-						fmt.Printf("버전 '%s'가 설치되어 있지 않습니다. 'gu list'로 설치된 목록을 확인하거나 'gu install %s'로 설치하세요.\n", version, version)
-						os.Exit(1)
+						return fmt.Errorf("버전 '%s'가 설치되어 있지 않습니다", version)
 					}
 				} else {
-					fmt.Printf("버전 '%s'가 설치되어 있지 않습니다.\n", version)
-					os.Exit(1)
+					return fmt.Errorf("버전 '%s'가 설치되어 있지 않습니다", version)
 				}
 			} else {
-				slog.Error("error checking version directory", "error", err)
-				os.Exit(1)
+				return fmt.Errorf("error checking version directory: %w", err)
 			}
 		}
 
 		if err := installer.UpdateCurrentSymlink(targetDir, targetGoDir); err != nil {
-			slog.Error("failed to create symlink", "error", err)
-			fmt.Printf("버전 변경 실패: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("버전 변경 실패: %w", err)
 		}
 
 		fmt.Printf("현재 Go 버전이 %s(으)로 변경되었습니다.\n", targetVersion)
+		return nil
 	},
 }
 

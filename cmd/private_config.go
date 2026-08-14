@@ -3,8 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"os"
 
 	"go_updater/internal/privatecache"
 
@@ -18,48 +16,38 @@ var (
 	cacheDirFlag    string
 )
 
-var privateConfigCmd = &cobra.Command{
-	Use:   "config",
-	Short: "프라이빗 모듈 캐시 설정을 관리합니다.",
-}
+var privateConfigCmd = &cobra.Command{Use: "config", Short: "프라이빗 모듈 캐시 설정을 관리합니다."}
 
 var privateConfigInitCmd = &cobra.Command{
-	Use:   "init",
-	Short: "기본 프라이빗 캐시 설정 파일을 생성합니다.",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use: "init", Short: "기본 프라이빗 캐시 설정 파일을 생성합니다.",
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
-			slog.Error("failed to resolve config path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve config path: %w", err)
 		}
 		cfg, err := privatecache.DefaultConfig()
 		if err != nil {
-			slog.Error("failed to get default config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to get default config: %w", err)
 		}
 		if err := privatecache.SaveConfig(configPath, cfg); err != nil {
-			slog.Error("failed to save config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to save config: %w", err)
 		}
-		fmt.Printf("설정 파일이 생성되었습니다: %s\n", configPath)
+		fmt.Fprintf(cmd.OutOrStdout(), "설정 파일이 생성되었습니다: %s\n", configPath)
+		return nil
 	},
 }
 
 var privateConfigSetCmd = &cobra.Command{
-	Use:   "set",
-	Short: "프라이빗 모듈 캐시 설정 값을 갱신합니다.",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use: "set", Short: "프라이빗 모듈 캐시 설정 값을 갱신합니다.",
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
-			slog.Error("failed to resolve config path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve config path: %w", err)
 		}
 		cfg, err := privatecache.LoadConfig(configPath)
 		if err != nil {
-			slog.Error("failed to load config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to load config: %w", err)
 		}
-
 		if cmd.Flags().Changed("private") {
 			cfg.PrivatePatterns = privatecache.ParseCSVPatterns(privatePatterns)
 		}
@@ -72,35 +60,31 @@ var privateConfigSetCmd = &cobra.Command{
 		if cmd.Flags().Changed("cache-dir") {
 			cfg.CacheDir = cacheDirFlag
 		}
-
 		if err := privatecache.SaveConfig(configPath, cfg); err != nil {
-			slog.Error("failed to save config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to save config: %w", err)
 		}
-		fmt.Printf("설정이 저장되었습니다: %s\n", configPath)
+		fmt.Fprintf(cmd.OutOrStdout(), "설정이 저장되었습니다: %s\n", configPath)
+		return nil
 	},
 }
 
 var privateConfigShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "현재 프라이빗 모듈 캐시 설정을 출력합니다.",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use: "show", Short: "현재 프라이빗 모듈 캐시 설정을 출력합니다.",
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
-			slog.Error("failed to resolve config path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve config path: %w", err)
 		}
 		cfg, err := privatecache.LoadConfig(configPath)
 		if err != nil {
-			slog.Error("failed to load config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to load config: %w", err)
 		}
 		b, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
-			slog.Error("failed to render config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to render config: %w", err)
 		}
-		fmt.Println(string(b))
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), string(b))
+		return err
 	},
 }
 
@@ -109,9 +93,6 @@ func init() {
 	privateConfigSetCmd.Flags().StringVar(&noSumDBPatterns, "nosumdb", "", "GONOSUMDB 패턴 (쉼표 구분)")
 	privateConfigSetCmd.Flags().StringVar(&noProxyPatterns, "noproxy", "", "GONOPROXY 패턴 (쉼표 구분)")
 	privateConfigSetCmd.Flags().StringVar(&cacheDirFlag, "cache-dir", "", "모듈 캐시 디렉토리")
-
-	privateConfigCmd.AddCommand(privateConfigInitCmd)
-	privateConfigCmd.AddCommand(privateConfigSetCmd)
-	privateConfigCmd.AddCommand(privateConfigShowCmd)
+	privateConfigCmd.AddCommand(privateConfigInitCmd, privateConfigSetCmd, privateConfigShowCmd)
 	privateCmd.AddCommand(privateConfigCmd)
 }

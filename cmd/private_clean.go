@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log/slog"
-	"os"
 
 	"go_updater/internal/privatecache"
 
@@ -19,38 +17,29 @@ var (
 var privateCleanCmd = &cobra.Command{
 	Use:   "clean",
 	Short: "프라이빗 모듈 캐시를 정리합니다.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
-			slog.Error("failed to resolve config path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve config path: %w", err)
 		}
 		metadataPath, err := privatecache.DefaultMetadataPath()
 		if err != nil {
-			slog.Error("failed to resolve metadata path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve metadata path: %w", err)
 		}
 		cfg, err := privatecache.LoadConfig(configPath)
 		if err != nil {
-			slog.Error("failed to load config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to load config: %w", err)
 		}
 
 		result, err := privatecache.CleanCache(cfg, metadataPath, privatecache.CleanOptions{
-			All:       privateCleanAll,
-			StaleDays: privateCleanStaleDay,
-			MaxSizeMB: privateCleanMaxSize,
+			All: privateCleanAll, StaleDays: privateCleanStaleDay, MaxSizeMB: privateCleanMaxSize,
 		})
 		if err != nil {
-			slog.Error("failed to clean cache", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to clean cache: %w", err)
 		}
-
-		fmt.Printf("정리 완료: 삭제 파일 %d개, 확보 용량 %.2f MB, 최종 크기 %.2f MB\n",
-			result.RemovedFiles,
-			float64(result.FreedBytes)/1024/1024,
-			float64(result.FinalSize)/1024/1024,
-		)
+		fmt.Fprintf(cmd.OutOrStdout(), "정리 완료: 삭제 파일 %d개, 확보 용량 %.2f MB, 최종 크기 %.2f MB\n",
+			result.RemovedFiles, float64(result.FreedBytes)/1024/1024, float64(result.FinalSize)/1024/1024)
+		return nil
 	},
 }
 

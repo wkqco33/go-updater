@@ -1,8 +1,10 @@
 package fetcher
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -13,107 +15,119 @@ import (
 const ReleaseURL = "https://go.dev/dl/?mode=json"
 const AllReleaseURL = "https://go.dev/dl/?mode=json&include=all"
 
-var httpClient = &http.Client{
-	Timeout: 30 * time.Second,
+// Client retrieves and resolves Go release metadata. Keeping the HTTP client
+// and endpoint on a value makes the network boundary replaceable in tests.
+type Client struct {
+	HTTPClient *http.Client
+	BaseURL    string
+	AllURL     string
 }
 
-func FetchReleases(includeAll bool) ([]GoRelease, error) {
-	url := ReleaseURL
+func NewClient(httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
+	return &Client{HTTPClient: httpClient, BaseURL: ReleaseURL, AllURL: AllReleaseURL}
+}
+
+var defaultClient = NewClient(nil)
+
+func (c *Client) FetchReleases(ctx context.Context, includeAll bool) ([]GoRelease, error) {
+	url := c.BaseURL
 	if includeAll {
-		url = AllReleaseURL
+		url = c.AllURL
 	}
 	slog.Debug("fetching releases from", "url", url)
-	resp, err := httpClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create release request: %w", err)
+	}
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, fmt.Errorf("failed to fetch releases: unexpected HTTP status %s", resp.Status)
+	}
 
 	var releases []GoRelease
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return nil, fmt.Errorf("failed to parse releases JSON: %w", err)
 	}
-
 	slog.Debug("successfully fetched and parsed release info", "count", len(releases))
 	return releases, nil
 }
 
-func FindReleaseByVersion(version string) (*GoRelease, error) {
+func (c *Client) FindReleaseByVersion(ctx context.Context, version string) (*GoRelease, error) {
 	if version == "" {
-		releases, err := FetchReleases(false)
+		releases, err := c.FetchReleases(ctx, false)
 		if err != nil {
 			return nil, err
 		}
-		for _, r := range releases {
-			if r.Stable {
-				slog.Debug("found latest stable release", "version", r.Version)
-				return &r, nil
+		for i := range releases {
+			if releases[i].Stable {
+				return &releases[i], nil
 			}
 		}
 		return nil, fmt.Errorf("no stable release found")
 	}
 
-	// Format user input. e.g. "1.20" -> "go1.20", "1.20.5" -> "go1.20.5"
 	targetVersion := version
 	if !strings.HasPrefix(targetVersion, "go") {
 		targetVersion = "go" + targetVersion
 	}
-
-	releases, err := FetchReleases(true)
+	releases, err := c.FetchReleases(ctx, true)
 	if err != nil {
 		return nil, err
 	}
 
-	// If it's an exact match (e.g. go1.20.5)
-	if strings.Count(targetVersion, ".") == 2 {
-		for _, r := range releases {
-			if r.Version == targetVersion {
-				slog.Debug("found exact release", "version", r.Version)
-				return &r, nil
-			}
+	for i := range releases {
+		if strings.Count(targetVersion, ".") == 2 && releases[i].Version == targetVersion {
+			return &releases[i], nil
 		}
-	} else {
-		// Prefix match (e.g. "go1.20" matches the first "go1.20.X" in the descending list)
-		for _, r := range releases {
-			if strings.HasPrefix(r.Version, targetVersion) {
-				slog.Debug("found prefix matched release", "target", targetVersion, "matched", r.Version)
-				return &r, nil
-			}
+		if strings.Count(targetVersion, ".") != 2 && strings.HasPrefix(releases[i].Version, targetVersion) {
+			return &releases[i], nil
 		}
 	}
-
 	return nil, fmt.Errorf("release not found for version: %s", version)
 }
 
-func FindMatchingFile(release *GoRelease, os, arch string) (*GoFile, error) {
+func FindMatchingFile(release *GoRelease, osName, arch string) (*GoFile, error) {
 	if release == nil {
 		return nil, fmt.Errorf("release is nil")
 	}
-
-	slog.Debug("finding matching file", "os", os, "arch", arch, "version", release.Version)
-
-	for _, file := range release.Files {
-		if file.OS == os && file.Arch == arch && file.Kind == "archive" {
-			slog.Debug("found matching archive", "filename", file.Filename)
-			return &file, nil
+	for i := range release.Files {
+		if release.Files[i].OS == osName && release.Files[i].Arch == arch && release.Files[i].Kind == "archive" {
+			return &release.Files[i], nil
 		}
 	}
-	return nil, fmt.Errorf("no matching archive found for os: %s, arch: %s", os, arch)
+	return nil, fmt.Errorf("no matching archive found for os: %s, arch: %s", osName, arch)
+}
+
+func (c *Client) GetDownloadURL(ctx context.Context, version, osName, arch string) (string, *GoFile, error) {
+	release, err := c.FindReleaseByVersion(ctx, version)
+	if err != nil {
+		return "", nil, err
+	}
+	file, err := FindMatchingFile(release, osName, arch)
+	if err != nil {
+		return "", nil, err
+	}
+	return fmt.Sprintf("https://dl.google.com/go/%s", file.Filename), file, nil
+}
+
+// Compatibility wrappers. New code should use Client methods so tests can
+// provide an httptest server and a context.
+func FetchReleases(includeAll bool) ([]GoRelease, error) {
+	return defaultClient.FetchReleases(context.Background(), includeAll)
+}
+
+func FindReleaseByVersion(version string) (*GoRelease, error) {
+	return defaultClient.FindReleaseByVersion(context.Background(), version)
 }
 
 func GetDownloadURL(version string) (string, *GoFile, error) {
-	slog.Debug("starting process to get download URL", "target_version", version, "runtime_os", runtime.GOOS, "runtime_arch", runtime.GOARCH)
-	release, err := FindReleaseByVersion(version)
-	if err != nil {
-		return "", nil, err
-	}
-
-	file, err := FindMatchingFile(release, runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		return "", nil, err
-	}
-
-	downloadURL := fmt.Sprintf("https://dl.google.com/go/%s", file.Filename)
-	slog.Debug("final download URL determined", "url", downloadURL)
-	return downloadURL, file, nil
+	return defaultClient.GetDownloadURL(context.Background(), version, runtime.GOOS, runtime.GOARCH)
 }

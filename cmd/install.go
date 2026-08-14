@@ -75,11 +75,10 @@ var installCmd = &cobra.Command{
 	Short: "Go를 설치하거나 특정 버전으로 업데이트합니다.",
 	Long:  `go.dev에서 릴리스 정보를 확인하고, 적절한 압축 파일을 다운로드하여 설치합니다. 버전을 명시하지 않으면 최신 버전을 설치합니다 (예: 1.20, 1.20.5).`,
 	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		runner := newInstallRunner()
-		if err := runner.Run(args, installDir, runner.stdout); err != nil {
-			os.Exit(1)
-		}
+		runner.stdout = cmd.OutOrStdout()
+		return runner.Run(args, installDir, runner.stdout)
 	},
 }
 

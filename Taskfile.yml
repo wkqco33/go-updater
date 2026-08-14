@@ -38,6 +38,24 @@ tasks:
     cmds:
       - 'go test ./...'
 
+  test-race:
+    desc: race detector와 함께 테스트 실행
+    cmds:
+      - 'go test -race ./...'
+
+  coverage:
+    desc: 커버리지 리포트 생성
+    cmds:
+      - 'go test ./... -coverprofile=coverage.out'
+      - 'go tool cover -func=coverage.out'
+
+  verify:
+    desc: 포맷, 정적 검사, 테스트 전체 실행
+    cmds:
+      - 'test -z "$(gofmt -l .)"'
+      - 'go vet ./...'
+      - 'go test ./...'
+
   lint:
     desc: go vet 실행
     cmds:

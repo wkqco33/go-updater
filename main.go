@@ -1,7 +1,15 @@
 package main
 
-import "go_updater/cmd"
+import (
+	"fmt"
+	"os"
+
+	"go_updater/cmd"
+)
 
 func main() {
-	cmd.Execute()
+	if err := cmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

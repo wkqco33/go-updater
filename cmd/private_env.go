@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"log/slog"
-	"os"
 	"sort"
 
 	"go_updater/internal/privatecache"
@@ -16,16 +14,14 @@ var privateOffline bool
 var privateEnvCmd = &cobra.Command{
 	Use:   "env",
 	Short: "다른 프로젝트에서 사용할 프라이빗 모듈 환경변수를 출력합니다.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
-			slog.Error("failed to resolve config path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve config path: %w", err)
 		}
 		cfg, err := privatecache.LoadConfig(configPath)
 		if err != nil {
-			slog.Error("failed to load config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to load config: %w", err)
 		}
 
 		envMap := privatecache.BuildEnv(cfg, privateOffline)
@@ -35,8 +31,9 @@ var privateEnvCmd = &cobra.Command{
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			fmt.Printf("export %s=%q\n", k, envMap[k])
+			fmt.Fprintf(cmd.OutOrStdout(), "export %s=%q\n", k, envMap[k])
 		}
+		return nil
 	},
 }
 

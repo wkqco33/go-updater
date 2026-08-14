@@ -13,13 +13,12 @@ import (
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "설치된 Go 버전 목록을 출력합니다.",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		slog.Debug("list command started")
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			slog.Error("failed to get home directory", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 		targetDir := filepath.Join(homeDir, ".go")
 		versionsDir := filepath.Join(targetDir, "versions")
@@ -29,10 +28,9 @@ var listCmd = &cobra.Command{
 		if err != nil {
 			if os.IsNotExist(err) {
 				fmt.Println("설치된 Go 버전이 없습니다. 'gu install' 명령어를 사용하여 설치하세요.")
-				return
+				return nil
 			}
-			slog.Error("failed to read versions directory", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to read versions directory: %w", err)
 		}
 
 		currentVersion := ""
@@ -57,6 +55,7 @@ var listCmd = &cobra.Command{
 		if !found {
 			fmt.Println("  설치된 버전이 없습니다.")
 		}
+		return nil
 	},
 }
 
