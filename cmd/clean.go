@@ -48,15 +48,14 @@ func artifactLabel(a systemgo.Artifact) string {
 // runCleanSystem detects go.dev pkg / Homebrew Go installations and, after
 // showing exactly which commands will run, removes what gu is allowed to
 // manage. Root-owned paths are removed via sudo, prompting for a password.
-func runCleanSystem() {
+func runCleanSystem() error {
 	items, err := systemgo.Detect()
 	if err != nil {
-		slog.Error("failed to detect system Go installation", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to detect system Go installation: %w", err)
 	}
 	if len(items) == 0 {
 		fmt.Println("감지된 시스템 Go 설치가 없습니다.")
-		return
+		return nil
 	}
 
 	var pkgItems, homebrewItems []systemgo.Present
@@ -90,7 +89,7 @@ func runCleanSystem() {
 
 	plan := systemgo.Plan(items)
 	if len(plan) == 0 {
-		return
+		return nil
 	}
 
 	fmt.Println("\n다음 명령이 실행됩니다:")
@@ -100,13 +99,11 @@ func runCleanSystem() {
 
 	if !confirmAction("\n계속하시겠습니까?") {
 		fmt.Println("취소되었습니다.")
-		return
+		return nil
 	}
 
 	if err := systemgo.Remove(plan); err != nil {
-		slog.Error("failed to remove system Go installation", "error", err)
-		fmt.Printf("일부 항목을 삭제하지 못했습니다: %v\n권한이 필요한 경우 sudo 비밀번호를 다시 확인하세요.\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to remove system Go installation: %w", err)
 	}
 
 	fmt.Println("시스템 Go 설치가 성공적으로 삭제되었습니다.")
@@ -115,6 +112,7 @@ func runCleanSystem() {
 			fmt.Println("참고: 현재 열려 있는 셸의 PATH에는 여전히 이전 경로가 남아있을 수 있습니다. 새 터미널 세션을 여세요.")
 		}
 	}
+	return nil
 }
 
 var cleanCmd = &cobra.Command{
@@ -122,13 +120,12 @@ var cleanCmd = &cobra.Command{
 	Short: "설치된 Go 버전들을 삭제하여 용량을 확보합니다.",
 	Long:  `지정한 특정 버전, 사용하지 않는 모든 버전(--unused), 또는 모든 버전(--all)을 삭제합니다.`,
 	Args:  cobra.MaximumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		slog.Debug("clean command started")
 
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			slog.Error("failed to get home directory", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 		targetDir := filepath.Join(homeDir, ".go")
 		versionsDir := filepath.Join(targetDir, "versions")
@@ -145,11 +142,10 @@ var cleanCmd = &cobra.Command{
 			fmt.Println("모든 설치된 Go 버전을 삭제합니다...")
 			os.Remove(currentLink)
 			if err := os.RemoveAll(versionsDir); err != nil {
-				slog.Error("failed to remove versions directory", "error", err)
-				os.Exit(1)
+				return fmt.Errorf("failed to remove versions directory: %w", err)
 			}
 			fmt.Println("모든 버전이 삭제되었습니다.")
-			return
+			return nil
 		}
 
 		// 2. Handle specific version deletion
@@ -159,38 +155,37 @@ var cleanCmd = &cobra.Command{
 			if !strings.HasPrefix(targetVersion, "go") {
 				targetVersion = "go" + targetVersion
 			}
-			
+
 			if targetVersion == currentVersion {
 				fmt.Printf("버전 %s는 현재 활성화되어 사용 중이므로 삭제할 수 없습니다. 'use' 명령어로 다른 버전으로 전환 후 삭제하세요.\n", targetVersion)
-				return
+				return nil
 			}
 
 			targetPath := filepath.Join(versionsDir, targetVersion)
 			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 				fmt.Printf("버전 %s가 설치되어 있지 않습니다.\n", targetVersion)
-				return
+				return nil
 			}
 
 			fmt.Printf("버전 %s를 삭제합니다...\n", targetVersion)
 			if err := os.RemoveAll(targetPath); err != nil {
 				slog.Error("failed to remove version folder", "version", targetVersion, "error", err)
-				os.Exit(1)
+				return fmt.Errorf("failed to remove version folder: %w", err)
 			}
 			fmt.Printf("버전 %s가 성공적으로 삭제되었습니다.\n", targetVersion)
-			return
+			return nil
 		}
 
 		// 3. Handle --unused flag
 		if cleanUnused {
 			if currentVersion == "" {
 				fmt.Println("현재 활성화된 버전 정보가 없습니다. 모든 버전을 삭제하시려면 --all을 사용하세요.")
-				return
+				return nil
 			}
 
 			entries, err := os.ReadDir(versionsDir)
 			if err != nil {
-				slog.Error("failed to read versions directory", "error", err)
-				os.Exit(1)
+				return fmt.Errorf("failed to read versions directory: %w", err)
 			}
 
 			fmt.Printf("현재 사용 중인 버전(%s)을 제외한 모든 버전을 삭제합니다...\n", currentVersion)
@@ -209,17 +204,16 @@ var cleanCmd = &cobra.Command{
 				}
 			}
 			fmt.Printf("총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", count)
-			return
+			return nil
 		}
 
 		// 4. Handle --system flag: remove go.dev system installation
 		if cleanSystem {
-			runCleanSystem()
-			return
+			return runCleanSystem()
 		}
 
 		// 5. Default: No args and no flags
-		cmd.Help()
+		return cmd.Help()
 	},
 }
 
