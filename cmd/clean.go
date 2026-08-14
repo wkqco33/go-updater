@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go_updater/internal/systemgo"
+	"go_updater/internal/versions"
 
 	"github.com/spf13/cobra"
 )
@@ -128,21 +129,17 @@ var cleanCmd = &cobra.Command{
 			return fmt.Errorf("failed to get home directory: %w", err)
 		}
 		targetDir := filepath.Join(homeDir, ".go")
-		versionsDir := filepath.Join(targetDir, "versions")
-		currentLink := filepath.Join(targetDir, "current")
-
-		resolvedLink, err := os.Readlink(currentLink)
-		currentVersion := ""
-		if err == nil {
-			currentVersion = filepath.Base(resolvedLink)
+		store := versions.NewStore(targetDir)
+		currentVersion, err := store.Active()
+		if err != nil {
+			return err
 		}
 
 		// 1. Handle --all flag
 		if cleanAll {
 			fmt.Println("모든 설치된 Go 버전을 삭제합니다...")
-			os.Remove(currentLink)
-			if err := os.RemoveAll(versionsDir); err != nil {
-				return fmt.Errorf("failed to remove versions directory: %w", err)
+			if err := store.RemoveAll(); err != nil {
+				return err
 			}
 			fmt.Println("모든 버전이 삭제되었습니다.")
 			return nil
@@ -161,16 +158,14 @@ var cleanCmd = &cobra.Command{
 				return nil
 			}
 
-			targetPath := filepath.Join(versionsDir, targetVersion)
-			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+			if _, err := store.Resolve(targetVersion); err != nil {
 				fmt.Printf("버전 %s가 설치되어 있지 않습니다.\n", targetVersion)
 				return nil
 			}
 
 			fmt.Printf("버전 %s를 삭제합니다...\n", targetVersion)
-			if err := os.RemoveAll(targetPath); err != nil {
-				slog.Error("failed to remove version folder", "version", targetVersion, "error", err)
-				return fmt.Errorf("failed to remove version folder: %w", err)
+			if err := store.Remove(targetVersion); err != nil {
+				return err
 			}
 			fmt.Printf("버전 %s가 성공적으로 삭제되었습니다.\n", targetVersion)
 			return nil
@@ -183,27 +178,15 @@ var cleanCmd = &cobra.Command{
 				return nil
 			}
 
-			entries, err := os.ReadDir(versionsDir)
-			if err != nil {
-				return fmt.Errorf("failed to read versions directory: %w", err)
-			}
-
 			fmt.Printf("현재 사용 중인 버전(%s)을 제외한 모든 버전을 삭제합니다...\n", currentVersion)
-			count := 0
-			for _, entry := range entries {
-				if entry.IsDir() && strings.HasPrefix(entry.Name(), "go") {
-					if entry.Name() != currentVersion {
-						slog.Debug("deleting unused version", "version", entry.Name())
-						if err := os.RemoveAll(filepath.Join(versionsDir, entry.Name())); err != nil {
-							slog.Warn("failed to delete version", "version", entry.Name(), "error", err)
-						} else {
-							fmt.Printf("  삭제됨: %s\n", entry.Name())
-							count++
-						}
-					}
-				}
+			removed, err := store.RemoveUnused()
+			if err != nil {
+				return err
 			}
-			fmt.Printf("총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", count)
+			for _, version := range removed {
+				fmt.Printf("  삭제됨: %s\n", version)
+			}
+			fmt.Printf("총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", len(removed))
 			return nil
 		}
 

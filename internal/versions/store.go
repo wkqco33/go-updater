@@ -99,6 +99,16 @@ func (s Store) Activate(name string) error {
 	return nil
 }
 
+func (s Store) RemoveAll() error {
+	if err := os.Remove(s.currentPath()); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove current version link: %w", err)
+	}
+	if err := os.RemoveAll(s.versionsDir()); err != nil {
+		return fmt.Errorf("remove versions directory: %w", err)
+	}
+	return nil
+}
+
 func (s Store) Remove(name string) error {
 	if !validVersionName(name) {
 		return fmt.Errorf("invalid Go version: %s", name)

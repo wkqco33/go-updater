@@ -54,6 +54,22 @@ func TestRemoveActiveVersionIsRejected(t *testing.T) {
 	}
 }
 
+func TestRemoveAllRemovesVersionsAndCurrentLink(t *testing.T) {
+	store := setupStore(t)
+	if err := store.Activate("go1.10.0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RemoveAll(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(store.Root, "versions")); !os.IsNotExist(err) {
+		t.Fatal("versions directory still exists")
+	}
+	if _, err := os.Lstat(filepath.Join(store.Root, "current")); !os.IsNotExist(err) {
+		t.Fatal("current link still exists")
+	}
+}
+
 func TestRemoveUnusedKeepsActiveVersion(t *testing.T) {
 	store := setupStore(t)
 	if err := store.Activate("go1.10.0"); err != nil {
