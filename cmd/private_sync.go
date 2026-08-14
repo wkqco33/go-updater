@@ -1,10 +1,7 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
-	"os"
 
 	"go_updater/internal/privatecache"
 
@@ -21,42 +18,39 @@ var privateSyncCmd = &cobra.Command{
 	Use:   "sync <module[@version]> [module[@version] ...]",
 	Short: "프라이빗 Go 모듈을 미리 다운로드해 공용 캐시에 적재합니다.",
 	Args:  cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
-			slog.Error("failed to resolve config path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve config path: %w", err)
 		}
 		metadataPath, err := privatecache.DefaultMetadataPath()
 		if err != nil {
-			slog.Error("failed to resolve metadata path", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to resolve metadata path: %w", err)
 		}
 		cfg, err := privatecache.LoadConfig(configPath)
 		if err != nil {
-			slog.Error("failed to load config", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to load config: %w", err)
 		}
 
-		result, err := privatecache.SyncModules(context.Background(), cfg, metadataPath, args, privateSyncRetries, privateSyncLatestIfMissed, privateSyncSource)
+		result, err := privatecache.SyncModules(cmd.Context(), cfg, metadataPath, args, privateSyncRetries, privateSyncLatestIfMissed, privateSyncSource)
 		if err != nil {
-			slog.Error("sync failed", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("sync failed: %w", err)
 		}
 
+		out := cmd.OutOrStdout()
 		for _, rec := range result.Downloaded {
-			fmt.Printf("downloaded: %s@%s (resolved=%s)\n", rec.Module, rec.RequestedVersion, rec.ResolvedVersion)
+			fmt.Fprintf(out, "downloaded: %s@%s (resolved=%s)\n", rec.Module, rec.RequestedVersion, rec.ResolvedVersion)
 		}
 		for _, rec := range result.Skipped {
-			fmt.Printf("skipped: %s@%s\n", rec.Module, rec.RequestedVersion)
+			fmt.Fprintf(out, "skipped: %s@%s\n", rec.Module, rec.RequestedVersion)
 		}
 		for _, reason := range result.Failed {
-			fmt.Printf("failed: %s\n", reason)
+			fmt.Fprintf(out, "failed: %s\n", reason)
 		}
-
 		if len(result.Failed) > 0 {
-			os.Exit(1)
+			return fmt.Errorf("%d module(s) failed to sync", len(result.Failed))
 		}
+		return nil
 	},
 }
 
