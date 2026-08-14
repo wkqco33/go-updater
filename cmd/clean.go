@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,9 +22,9 @@ var (
 )
 
 // confirmAction asks the user to confirm by typing 'y' or 'Y'.
-func confirmAction(prompt string) bool {
-	fmt.Printf("%s [y/N]: ", prompt)
-	scanner := bufio.NewScanner(os.Stdin)
+func confirmAction(prompt string, in io.Reader, out io.Writer) bool {
+	fmt.Fprintf(out, "%s [y/N]: ", prompt)
+	scanner := bufio.NewScanner(in)
 	if scanner.Scan() {
 		answer := strings.TrimSpace(scanner.Text())
 		return strings.EqualFold(answer, "y")
@@ -49,13 +50,13 @@ func artifactLabel(a systemgo.Artifact) string {
 // runCleanSystem detects go.dev pkg / Homebrew Go installations and, after
 // showing exactly which commands will run, removes what gu is allowed to
 // manage. Root-owned paths are removed via sudo, prompting for a password.
-func runCleanSystem() error {
+func runCleanSystem(in io.Reader, out io.Writer) error {
 	items, err := systemgo.Detect()
 	if err != nil {
 		return fmt.Errorf("failed to detect system Go installation: %w", err)
 	}
 	if len(items) == 0 {
-		fmt.Println("감지된 시스템 Go 설치가 없습니다.")
+		fmt.Fprintln(out, "감지된 시스템 Go 설치가 없습니다.")
 		return nil
 	}
 
@@ -69,7 +70,7 @@ func runCleanSystem() error {
 	}
 
 	if len(pkgItems) > 0 {
-		fmt.Println("감지된 go.dev pkg 설치:")
+		fmt.Fprintln(out, "감지된 go.dev pkg 설치:")
 		for _, item := range pkgItems {
 			line := "  [x] " + artifactLabel(item.Artifact)
 			if !item.Exists {
@@ -80,12 +81,12 @@ func runCleanSystem() error {
 					line += " " + item.Artifact.Detail
 				}
 			}
-			fmt.Println(line)
+			fmt.Fprintln(out, line)
 		}
 	}
 	for _, item := range homebrewItems {
-		fmt.Printf("Homebrew로 설치된 Go가 감지되었습니다: %s\n", item.Artifact.Path)
-		fmt.Println("gu는 Homebrew 설치를 삭제하지 않습니다. 삭제하려면 'brew uninstall go'를 사용하세요.")
+		fmt.Fprintf(out, "Homebrew로 설치된 Go가 감지되었습니다: %s\n", item.Artifact.Path)
+		fmt.Fprintln(out, "gu는 Homebrew 설치를 삭제하지 않습니다. 삭제하려면 'brew uninstall go'를 사용하세요.")
 	}
 
 	plan := systemgo.Plan(items)
@@ -93,13 +94,13 @@ func runCleanSystem() error {
 		return nil
 	}
 
-	fmt.Println("\n다음 명령이 실행됩니다:")
+	fmt.Fprintln(out, "\n다음 명령이 실행됩니다:")
 	for _, step := range plan {
-		fmt.Println("  " + step.Display)
+		fmt.Fprintln(out, "  "+step.Display)
 	}
 
-	if !confirmAction("\n계속하시겠습니까?") {
-		fmt.Println("취소되었습니다.")
+	if !confirmAction("\n계속하시겠습니까?", in, out) {
+		fmt.Fprintln(out, "취소되었습니다.")
 		return nil
 	}
 
@@ -107,10 +108,10 @@ func runCleanSystem() error {
 		return fmt.Errorf("failed to remove system Go installation: %w", err)
 	}
 
-	fmt.Println("시스템 Go 설치가 성공적으로 삭제되었습니다.")
+	fmt.Fprintln(out, "시스템 Go 설치가 성공적으로 삭제되었습니다.")
 	for _, step := range plan {
 		if step.Artifact.Kind == systemgo.KindFile && step.Artifact.Path == systemgo.PathsDGo {
-			fmt.Println("참고: 현재 열려 있는 셸의 PATH에는 여전히 이전 경로가 남아있을 수 있습니다. 새 터미널 세션을 여세요.")
+			fmt.Fprintln(out, "참고: 현재 열려 있는 셸의 PATH에는 여전히 이전 경로가 남아있을 수 있습니다. 새 터미널 세션을 여세요.")
 		}
 	}
 	return nil
@@ -192,7 +193,7 @@ var cleanCmd = &cobra.Command{
 
 		// 4. Handle --system flag: remove go.dev system installation
 		if cleanSystem {
-			return runCleanSystem()
+			return runCleanSystem(cmd.InOrStdin(), cmd.OutOrStdout())
 		}
 
 		// 5. Default: No args and no flags
