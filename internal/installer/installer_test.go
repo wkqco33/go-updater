@@ -141,6 +141,37 @@ func TestInstallGoCompletesSuccessfulInstallation(t *testing.T) {
 	}
 }
 
+func TestInstallGoRollsBackWhenCurrentLinkReplacementFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory replacement semantics differ on Windows")
+	}
+	archive := makeTarGz(t, map[string]string{"go/bin/go": "new"})
+	sum := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	target := t.TempDir()
+	oldVersion := filepath.Join(target, "versions", "go1.23.0")
+	if err := os.MkdirAll(oldVersion, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldVersion, "old.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(target, "current"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0"); err == nil {
+		t.Fatal("InstallGo() error = nil when current replacement fails")
+	}
+	if got, err := os.ReadFile(filepath.Join(oldVersion, "old.txt")); err != nil || string(got) != "keep" {
+		t.Fatalf("old installation was not restored: %q, error=%v", got, err)
+	}
+}
+
 func TestInstallGoKeepsExistingVersionWhenArchiveIsInvalid(t *testing.T) {
 	archive := makeTarGz(t, map[string]string{"readme.txt": "not a Go distribution"})
 	sum := sha256.Sum256(archive)
