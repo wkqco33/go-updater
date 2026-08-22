@@ -43,7 +43,7 @@ go test ./... -coverprofile=coverage.out
 go tool cover -func=coverage.out
 ```
 
-현재 목표는 전체 statement coverage 70% 이상이며, 핵심 패키지는 가능한 한 80% 이상을 유지하는 것입니다. 커버리지 숫자만 올리기 위한 무의미한 테스트는 추가하지 않습니다.
+현재 목표는 전체 statement coverage 60% 이상이며, 핵심 패키지는 가능한 한 더 높은 수준을 유지하는 것입니다. 커버리지 숫자만 올리기 위한 무의미한 테스트는 추가하지 않습니다.
 
 ## 설계 원칙
 

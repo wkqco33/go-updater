@@ -15,7 +15,7 @@ func TestVersionCommandWritesToConfiguredOutput(t *testing.T) {
 	if err := cmd.RunE(&cmd, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "gu version 0.1.0") {
+	if !strings.Contains(out.String(), "gu version dev") {
 		t.Fatalf("output = %q", out.String())
 	}
 }

@@ -1,4 +1,4 @@
-module go_updater
+module github.com/wkqco33/go-updater
 
 go 1.26.1
 

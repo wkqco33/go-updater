@@ -9,10 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go_updater/internal/systemgo"
-	"go_updater/internal/versions"
+	"github.com/wkqco33/go-updater/internal/systemgo"
+	"github.com/wkqco33/go-updater/internal/versions"
 
-	"go_updater/internal/cli"
+	"github.com/wkqco33/go-updater/internal/cli"
 )
 
 var (

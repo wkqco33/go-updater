@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"go_updater/internal/fetcher"
-	"go_updater/internal/installer"
+	"github.com/wkqco33/go-updater/internal/fetcher"
+	"github.com/wkqco33/go-updater/internal/installer"
 
-	"go_updater/internal/cli"
+	"github.com/wkqco33/go-updater/internal/cli"
 )
 
 var installDir string

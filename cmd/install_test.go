@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go_updater/internal/fetcher"
+	"github.com/wkqco33/go-updater/internal/fetcher"
 )
 
 func TestInstallRunnerUsesProvidedDirectory(t *testing.T) {

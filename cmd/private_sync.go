@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"go_updater/internal/privatecache"
+	"github.com/wkqco33/go-updater/internal/privatecache"
 
-	"go_updater/internal/cli"
+	"github.com/wkqco33/go-updater/internal/cli"
 )
 
 var (

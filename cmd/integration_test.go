@@ -15,7 +15,7 @@ func TestRootCommandRoutesVersionAndInheritsOutput(t *testing.T) {
 	if err := rootCmd.ExecuteArgs([]string{"version"}); err != nil {
 		t.Fatalf("ExecuteArgs() error = %v", err)
 	}
-	if !strings.Contains(out.String(), "gu version 0.1.0") {
+	if !strings.Contains(out.String(), "gu version dev") {
 		t.Fatalf("output = %q", out.String())
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"go_updater/cmd"
+	"github.com/wkqco33/go-updater/cmd"
 )
 
 func main() {

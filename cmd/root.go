@@ -3,7 +3,7 @@ package cmd
 import (
 	"log/slog"
 
-	"go_updater/internal/cli"
+	"github.com/wkqco33/go-updater/internal/cli"
 )
 
 var debug bool

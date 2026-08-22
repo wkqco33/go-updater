@@ -15,12 +15,17 @@
 
 ## 설치 방법
 
-소스 코드에서 직접 빌드하여 사용할 수 있습니다. 빌드에는 [Task](https://taskfile.dev)가 필요합니다.
+미리 빌드된 바이너리는 GitHub Releases에서 받을 수 있습니다. `ppm`을 사용하면 현재 OS와 CPU 아키텍처에 맞는 릴리스를 자동으로 설치할 수 있습니다.
 
 ```bash
-git clone <repository_url>
+ppm install wkqco33/go-updater
+```
+
+소스 코드에서 직접 빌드하려면 [Task](https://taskfile.dev)가 필요합니다.
+
+```bash
+git clone https://github.com/wkqco33/go-updater.git
 cd go-updater
-go mod tidy
 task build
 ```
 
@@ -29,6 +34,16 @@ task build
 ```bash
 task install
 ```
+
+지원 플랫폼은 Linux (amd64/arm64), macOS (amd64/arm64), Windows (amd64/arm64)입니다. 직접 다운로드하는 경우 GitHub Releases의 플랫폼별 아카이브와 `.sha256` 파일을 함께 확인하세요.
+
+다운로드한 Linux 아카이브의 무결성은 다음처럼 확인할 수 있습니다.
+
+```bash
+sha256sum -c gu_linux_amd64.tar.gz.sha256
+```
+
+macOS에서는 `shasum -a 256`을, Windows에서는 PowerShell의 `Get-FileHash`를 사용해 SHA-256 값을 비교하세요.
 
 그 외 사용 가능한 task 명령어:
 
@@ -134,6 +149,8 @@ gu clean --system
 ```bash
 gu version
 ```
+
+릴리스 바이너리에서는 명령어 버전이 해당 Git tag와 일치합니다. 소스에서 직접 빌드한 경우 버전은 `dev`로 표시됩니다.
 
 ## 프라이빗 모듈 캐시 사용
 

@@ -1,6 +1,6 @@
 {
   "description": "Go 언어 버전 관리 및 업데이트 도구",
-  "author": "seoyc",
-  "homepage": "https://github.com/seoyc/go-updater",
+  "author": "wkqco33",
+  "homepage": "https://github.com/wkqco33/go-updater",
   "bin_name": "gu"
 }

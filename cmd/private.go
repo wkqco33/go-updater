@@ -1,6 +1,6 @@
 package cmd
 
-import "go_updater/internal/cli"
+import "github.com/wkqco33/go-updater/internal/cli"
 
 var privateCmd = &cli.Command{
 	Use:   "private",
