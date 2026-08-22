@@ -66,6 +66,21 @@ func TestExtractZip(t *testing.T) {
 	}
 }
 
+func TestExtractTarGzRejectsPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "unsafe.tar.gz")
+	if err := os.WriteFile(archivePath, makeTarGz(t, map[string]string{"../outside": "must not escape"}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "dest")
+	if err := extractTarGz(archivePath, dest); err == nil {
+		t.Fatal("extractTarGz() error = nil for path traversal archive")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "outside")); !os.IsNotExist(err) {
+		t.Fatal("path traversal created a file outside destination")
+	}
+}
+
 func TestExtractZipRejectsPathTraversal(t *testing.T) {
 	dir := t.TempDir()
 	archivePath := filepath.Join(dir, "unsafe.zip")

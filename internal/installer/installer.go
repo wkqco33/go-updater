@@ -1,7 +1,9 @@
 package installer
 
 import (
+	"archive/tar"
 	"archive/zip"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -10,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -120,16 +121,78 @@ func ExtractArchive(archivePath, destDir string) error {
 			return fmt.Errorf("failed to extract zip: %w", err)
 		}
 	} else {
-		slog.Debug("executing tar -xzf")
-		cmd := exec.Command("tar", "-xzf", archivePath, "-C", destDir)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+		slog.Debug("extracting tar.gz with archive/tar")
+		if err := extractTarGz(archivePath, destDir); err != nil {
 			return fmt.Errorf("failed to extract tar.gz: %w", err)
 		}
 	}
 	slog.Debug("extraction complete")
 	return nil
+}
+
+func archivePathWithin(destDir, name string) (string, error) {
+	cleanDest := filepath.Clean(destDir)
+	path := filepath.Join(cleanDest, filepath.FromSlash(name))
+	cleanPath := filepath.Clean(path)
+	if cleanPath != cleanDest && !strings.HasPrefix(cleanPath, cleanDest+string(os.PathSeparator)) {
+		return "", fmt.Errorf("illegal file path: %s", name)
+	}
+	return cleanPath, nil
+}
+
+// extractTarGz extracts a tar.gz archive without invoking an external tar
+// binary. It rejects traversal and non-regular entries so an archive cannot
+// create a symlink that escapes the destination directory.
+func extractTarGz(archivePath, destDir string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to read gzip archive: %w", err)
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar archive: %w", err)
+		}
+		path, err := archivePathWithin(destDir, header.Name)
+		if err != nil {
+			return err
+		}
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", path, err)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory for %s: %w", path, err)
+			}
+			out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode)&0777)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", path, err)
+			}
+			_, copyErr := io.Copy(out, tr)
+			closeErr := out.Close()
+			if copyErr != nil {
+				return fmt.Errorf("failed to write file %s: %w", path, copyErr)
+			}
+			if closeErr != nil {
+				return fmt.Errorf("failed to close file %s: %w", path, closeErr)
+			}
+		default:
+			return fmt.Errorf("unsupported tar entry type for %s", header.Name)
+		}
+	}
 }
 
 // extractZip extracts a ZIP archive to the destination directory using Go's
@@ -142,10 +205,9 @@ func extractZip(archivePath, destDir string) error {
 	defer r.Close()
 
 	for _, f := range r.File {
-		fpath := filepath.Join(destDir, f.Name)
-
-		if !strings.HasPrefix(filepath.Clean(fpath), filepath.Clean(destDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal file path: %s", fpath)
+		fpath, err := archivePathWithin(destDir, f.Name)
+		if err != nil {
+			return err
 		}
 
 		if f.FileInfo().IsDir() {
@@ -204,9 +266,8 @@ func UpdateCurrentSymlink(targetDir, goDir string) error {
 			slog.Debug("symlink failed, trying mklink /J", "error", err)
 			// mklink /J는 대상 경로가 이미 존재하면 실패하므로 기존 링크를 먼저 제거한다.
 			removeCurrentLink(currentLink)
-			cmd := exec.Command("cmd", "/c", "mklink", "/J", currentLink, goDir)
-			if out, mklinkErr := cmd.CombinedOutput(); mklinkErr != nil {
-				return fmt.Errorf("failed to create symlink/junction for current version: %w (%s)\nWindows에서 심볼릭 링크를 생성하려면 개발자 모드를 활성화하거나 관리자 권한으로 실행하세요.", err, strings.TrimSpace(string(out)))
+			if mklinkErr := createWindowsJunction(currentLink, goDir); mklinkErr != nil {
+				return fmt.Errorf("failed to create symlink/junction for current version: %w\nWindows에서 심볼릭 링크를 생성하려면 개발자 모드를 활성화하거나 관리자 권한으로 실행하세요.", err)
 			}
 			return nil
 		}
