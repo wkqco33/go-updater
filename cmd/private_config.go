@@ -6,7 +6,7 @@ import (
 
 	"go_updater/internal/privatecache"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var (
@@ -16,11 +16,11 @@ var (
 	cacheDirFlag    string
 )
 
-var privateConfigCmd = &cobra.Command{Use: "config", Short: "프라이빗 모듈 캐시 설정을 관리합니다."}
+var privateConfigCmd = &cli.Command{Use: "config", Short: "프라이빗 모듈 캐시 설정을 관리합니다."}
 
-var privateConfigInitCmd = &cobra.Command{
+var privateConfigInitCmd = &cli.Command{
 	Use: "init", Short: "기본 프라이빗 캐시 설정 파일을 생성합니다.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cli.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
 			return fmt.Errorf("failed to resolve config path: %w", err)
@@ -37,9 +37,9 @@ var privateConfigInitCmd = &cobra.Command{
 	},
 }
 
-var privateConfigSetCmd = &cobra.Command{
+var privateConfigSetCmd = &cli.Command{
 	Use: "set", Short: "프라이빗 모듈 캐시 설정 값을 갱신합니다.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cli.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
 			return fmt.Errorf("failed to resolve config path: %w", err)
@@ -68,9 +68,9 @@ var privateConfigSetCmd = &cobra.Command{
 	},
 }
 
-var privateConfigShowCmd = &cobra.Command{
+var privateConfigShowCmd = &cli.Command{
 	Use: "show", Short: "현재 프라이빗 모듈 캐시 설정을 출력합니다.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cli.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
 			return fmt.Errorf("failed to resolve config path: %w", err)
@@ -89,10 +89,10 @@ var privateConfigShowCmd = &cobra.Command{
 }
 
 func init() {
-	privateConfigSetCmd.Flags().StringVar(&privatePatterns, "private", "", "GOPRIVATE 패턴 (쉼표 구분)")
-	privateConfigSetCmd.Flags().StringVar(&noSumDBPatterns, "nosumdb", "", "GONOSUMDB 패턴 (쉼표 구분)")
-	privateConfigSetCmd.Flags().StringVar(&noProxyPatterns, "noproxy", "", "GONOPROXY 패턴 (쉼표 구분)")
-	privateConfigSetCmd.Flags().StringVar(&cacheDirFlag, "cache-dir", "", "모듈 캐시 디렉토리")
+	privateConfigSetCmd.Flags().StringVar(&privatePatterns, "private", "", "", "GOPRIVATE 패턴 (쉼표 구분)")
+	privateConfigSetCmd.Flags().StringVar(&noSumDBPatterns, "nosumdb", "", "", "GONOSUMDB 패턴 (쉼표 구분)")
+	privateConfigSetCmd.Flags().StringVar(&noProxyPatterns, "noproxy", "", "", "GONOPROXY 패턴 (쉼표 구분)")
+	privateConfigSetCmd.Flags().StringVar(&cacheDirFlag, "cache-dir", "", "", "모듈 캐시 디렉토리")
 	privateConfigCmd.AddCommand(privateConfigInitCmd, privateConfigSetCmd, privateConfigShowCmd)
 	privateCmd.AddCommand(privateConfigCmd)
 }

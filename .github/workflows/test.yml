@@ -34,7 +34,7 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -count=1 -shuffle=on
 
       - name: Race test (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -42,4 +42,14 @@ jobs:
 
       - name: Coverage (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: go test ./... -coverprofile=coverage.out
+        run: |
+          go test ./... -count=1 -covermode=atomic -coverprofile=coverage.out
+          go tool cover -func=coverage.out
+          ./scripts/check-coverage.sh coverage.out 50
+
+      - name: Upload coverage (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out

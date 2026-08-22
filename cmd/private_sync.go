@@ -5,7 +5,7 @@ import (
 
 	"go_updater/internal/privatecache"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var (
@@ -14,11 +14,11 @@ var (
 	privateSyncSource         string
 )
 
-var privateSyncCmd = &cobra.Command{
+var privateSyncCmd = &cli.Command{
 	Use:   "sync <module[@version]> [module[@version] ...]",
 	Short: "프라이빗 Go 모듈을 미리 다운로드해 공용 캐시에 적재합니다.",
-	Args:  cobra.MinimumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Args:  cli.MinimumNArgs(1),
+	RunE: func(cmd *cli.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
 			return fmt.Errorf("failed to resolve config path: %w", err)
@@ -55,8 +55,8 @@ var privateSyncCmd = &cobra.Command{
 }
 
 func init() {
-	privateSyncCmd.Flags().IntVar(&privateSyncRetries, "retries", 3, "모듈 다운로드 재시도 횟수")
-	privateSyncCmd.Flags().BoolVar(&privateSyncLatestIfMissed, "latest-if-missing", true, "버전 미지정 시 latest 사용")
-	privateSyncCmd.Flags().StringVar(&privateSyncSource, "source", "manual", "동기화 소스 식별자(예: github-enterprise)")
+	privateSyncCmd.Flags().IntVar(&privateSyncRetries, "retries", "", 3, "모듈 다운로드 재시도 횟수")
+	privateSyncCmd.Flags().BoolVar(&privateSyncLatestIfMissed, "latest-if-missing", "", true, "버전 미지정 시 latest 사용")
+	privateSyncCmd.Flags().StringVar(&privateSyncSource, "source", "", "manual", "동기화 소스 식별자(예: github-enterprise)")
 	privateCmd.AddCommand(privateSyncCmd)
 }

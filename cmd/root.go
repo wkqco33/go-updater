@@ -3,7 +3,7 @@ package cmd
 import (
 	"log/slog"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var debug bool
@@ -12,12 +12,12 @@ var debug bool
 // themselves during package initialization for now; keeping construction in a
 // function gives tests and the eventual dependency-injected command tree a
 // single entry point.
-func NewRoot() *cobra.Command {
-	root := &cobra.Command{
+func NewRoot() *cli.Command {
+	root := &cli.Command{
 		Use:   "gu",
 		Short: "Go 언어를 설치하거나 최신 버전으로 업데이트하는 도구입니다.",
 		Long:  `go.dev에서 최신 Go 릴리스 정보를 가져와 사용자의 시스템 환경에 맞는 버전을 자동으로 다운로드하고 설치해주는 빠르고 유연한 CLI 도구입니다.`,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		PersistentPreRun: func(cmd *cli.Command, args []string) {
 			level := slog.LevelInfo
 			if debug {
 				level = slog.LevelDebug
@@ -25,11 +25,12 @@ func NewRoot() *cobra.Command {
 			logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level}))
 			slog.SetDefault(logger)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
+		RunE: func(cmd *cli.Command, args []string) error {
+			cmd.Help()
+			return nil
 		},
 	}
-	root.PersistentFlags().BoolVar(&debug, "debug", false, "디버그 로깅 활성화")
+	root.PersistentFlags().BoolVar(&debug, "debug", "", false, "디버그 로깅 활성화")
 	return root
 }
 

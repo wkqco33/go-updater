@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -91,6 +92,37 @@ func TestExtractZipRejectsPathTraversal(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "outside")); !os.IsNotExist(err) {
 		t.Fatal("path traversal created a file outside destination")
+	}
+}
+
+func TestInstallGoCompletesSuccessfulInstallation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tar.gz is not the Windows installer format")
+	}
+	archive := makeTarGz(t, map[string]string{
+		"go/VERSION": "go1.23.0",
+		"go/bin/go":  "go executable",
+	})
+	sum := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	target := t.TempDir()
+	if err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0"); err != nil {
+		t.Fatalf("InstallGo() error = %v", err)
+	}
+	installed := filepath.Join(target, "versions", "go1.23.0")
+	if got, err := os.ReadFile(filepath.Join(installed, "bin", "go")); err != nil || string(got) != "go executable" {
+		t.Fatalf("installed executable = %q, error=%v", got, err)
+	}
+	link, err := os.Readlink(filepath.Join(target, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if link != installed {
+		t.Fatalf("current link = %q, want %q", link, installed)
 	}
 }
 

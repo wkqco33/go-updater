@@ -8,17 +8,17 @@ import (
 	"go_updater/internal/installer"
 	"go_updater/internal/versions"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var useHomeDir = os.UserHomeDir
 
-var useCmd = &cobra.Command{
+var useCmd = &cli.Command{
 	Use:   "use <version>",
 	Short: "설치된 특정 버전의 Go를 활성화합니다.",
 	Long:  `설치된 버전 목록 중 하나를 선택하여 활성화합니다. (예: 1.20, 1.20.5)`,
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Args:  cli.ExactArgs(1),
+	RunE: func(cmd *cli.Command, args []string) error {
 		homeDir, err := useHomeDir()
 		if err != nil {
 			return fmt.Errorf("failed to get home directory: %w", err)

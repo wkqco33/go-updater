@@ -12,7 +12,7 @@ import (
 	"go_updater/internal/systemgo"
 	"go_updater/internal/versions"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var (
@@ -118,12 +118,12 @@ func runCleanSystem(in io.Reader, out io.Writer) error {
 	return nil
 }
 
-var cleanCmd = &cobra.Command{
+var cleanCmd = &cli.Command{
 	Use:   "clean [version]",
 	Short: "설치된 Go 버전들을 삭제하여 용량을 확보합니다.",
 	Long:  `지정한 특정 버전, 사용하지 않는 모든 버전(--unused), 또는 모든 버전(--all)을 삭제합니다.`,
-	Args:  cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	Args:  cli.MaximumNArgs(1),
+	RunE: func(cmd *cli.Command, args []string) error {
 		slog.Debug("clean command started")
 
 		homeDir, err := userHomeDir()
@@ -198,13 +198,14 @@ var cleanCmd = &cobra.Command{
 		}
 
 		// 5. Default: No args and no flags
-		return cmd.Help()
+		cmd.Help()
+		return nil
 	},
 }
 
 func init() {
-	cleanCmd.Flags().BoolVar(&cleanAll, "all", false, "모든 설치된 Go 버전을 삭제합니다.")
-	cleanCmd.Flags().BoolVar(&cleanUnused, "unused", false, "현재 사용 중인 버전을 제외한 모든 설치된 버전을 삭제합니다.")
-	cleanCmd.Flags().BoolVar(&cleanSystem, "system", false, "go.dev에서 설치된 시스템 Go를 삭제합니다 (macOS: /usr/local/go, /etc/paths.d/go, pkgutil 리시트 포함 / Windows: C:\\Go).")
+	cleanCmd.Flags().BoolVar(&cleanAll, "all", "", false, "모든 설치된 Go 버전을 삭제합니다.")
+	cleanCmd.Flags().BoolVar(&cleanUnused, "unused", "", false, "현재 사용 중인 버전을 제외한 모든 설치된 버전을 삭제합니다.")
+	cleanCmd.Flags().BoolVar(&cleanSystem, "system", "", false, "go.dev에서 설치된 시스템 Go를 삭제합니다 (macOS: /usr/local/go, /etc/paths.d/go, pkgutil 리시트 포함 / Windows: C:\\Go).")
 	rootCmd.AddCommand(cleanCmd)
 }

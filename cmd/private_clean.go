@@ -5,7 +5,7 @@ import (
 
 	"go_updater/internal/privatecache"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var (
@@ -14,10 +14,10 @@ var (
 	privateCleanMaxSize  int64
 )
 
-var privateCleanCmd = &cobra.Command{
+var privateCleanCmd = &cli.Command{
 	Use:   "clean",
 	Short: "프라이빗 모듈 캐시를 정리합니다.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cli.Command, args []string) error {
 		configPath, err := privatecache.DefaultConfigPath()
 		if err != nil {
 			return fmt.Errorf("failed to resolve config path: %w", err)
@@ -44,8 +44,8 @@ var privateCleanCmd = &cobra.Command{
 }
 
 func init() {
-	privateCleanCmd.Flags().BoolVar(&privateCleanAll, "all", false, "캐시 전체 및 메타데이터를 삭제")
-	privateCleanCmd.Flags().IntVar(&privateCleanStaleDay, "stale-days", 0, "N일 이전 파일 삭제")
-	privateCleanCmd.Flags().Int64Var(&privateCleanMaxSize, "max-size-mb", 0, "캐시 최대 크기(MB) 초과 시 오래된 파일부터 삭제")
+	privateCleanCmd.Flags().BoolVar(&privateCleanAll, "all", "", false, "캐시 전체 및 메타데이터를 삭제")
+	privateCleanCmd.Flags().IntVar(&privateCleanStaleDay, "stale-days", "", 0, "N일 이전 파일 삭제")
+	privateCleanCmd.Flags().Int64Var(&privateCleanMaxSize, "max-size-mb", "", 0, "캐시 최대 크기(MB) 초과 시 오래된 파일부터 삭제")
 	privateCmd.AddCommand(privateCleanCmd)
 }

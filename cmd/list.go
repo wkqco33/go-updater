@@ -7,15 +7,15 @@ import (
 
 	"go_updater/internal/versions"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
 var listHomeDir = os.UserHomeDir
 
-var listCmd = &cobra.Command{
+var listCmd = &cli.Command{
 	Use:   "list",
 	Short: "설치된 Go 버전 목록을 출력합니다.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cli.Command, args []string) error {
 		homeDir, err := listHomeDir()
 		if err != nil {
 			return fmt.Errorf("failed to get home directory: %w", err)

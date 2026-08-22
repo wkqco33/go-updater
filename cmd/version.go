@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"runtime"
 
-	"github.com/spf13/cobra"
+	"go_updater/internal/cli"
 )
 
-var versionCmd = &cobra.Command{
+var versionCmd = &cli.Command{
 	Use:   "version",
 	Short: "gu의 버전 정보를 출력합니다.",
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cli.Command, args []string) error {
 		slog.Debug("version command called")
 		fmt.Fprintf(cmd.OutOrStdout(), "gu version 0.1.0\n")
 		fmt.Fprintf(cmd.OutOrStdout(), "OS/Arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)

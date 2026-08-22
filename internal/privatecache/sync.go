@@ -27,6 +27,16 @@ type downloadJSON struct {
 	Version string `json:"Version"`
 }
 
+// downloadModuleFn is a seam for testing orchestration and retry behavior.
+// Production code uses downloadModule; tests can replace it without invoking
+// the user's Go toolchain or network.
+var downloadModuleFn = downloadModule
+
+// runCommandFn isolates external go command execution from module-sync
+// orchestration. Production uses exec.CommandContext; tests can verify
+// command arguments and environment without invoking a toolchain.
+var runCommandFn = runCommand
+
 func ParseModuleSpec(spec string) (string, string, error) {
 	spec = strings.TrimSpace(spec)
 	if spec == "" {
@@ -57,7 +67,7 @@ func SyncModules(ctx context.Context, cfg Config, metadataPath string, specs []s
 
 	metadata, err := LoadMetadata(metadataPath)
 	if err != nil {
-		return SyncResult{}, err
+		return SyncResult{}, fmt.Errorf("load sync metadata: %w", err)
 	}
 	existing := BuildMetadataIndex(metadata.Modules)
 	result := SyncResult{}
@@ -115,13 +125,24 @@ func downloadModuleWithRetry(ctx context.Context, cfg Config, module, version st
 	target := module + "@" + version
 	var lastErr error
 	for i := 1; i <= retries; i++ {
-		resolved, err := downloadModule(ctx, cfg, target)
+		resolved, err := downloadModuleFn(ctx, cfg, target)
 		if err == nil {
 			return resolved, nil
 		}
 		lastErr = err
 	}
 	return "", fmt.Errorf("failed to download %s after %d attempts: %w", target, retries, lastErr)
+}
+
+func runCommand(ctx context.Context, dir string, env []string, name string, args ...string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	cmd.Env = env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.Bytes(), stderr.Bytes(), err
 }
 
 func downloadModule(ctx context.Context, cfg Config, target string) (string, error) {
@@ -131,24 +152,22 @@ func downloadModule(ctx context.Context, cfg Config, target string) (string, err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	initCmd := exec.CommandContext(ctx, "go", "mod", "init", "go_updater_private_sync_tmp")
-	initCmd.Dir = tmpDir
-	if out, err := initCmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("go mod init failed: %s: %w", sanitizeOutput(string(out)), err)
+	initOut, initErrOut, err := runCommandFn(ctx, tmpDir, nil, "go", "mod", "init", "go_updater_private_sync_tmp")
+	if err != nil {
+		message := string(initErrOut)
+		if message == "" {
+			message = string(initOut)
+		}
+		return "", fmt.Errorf("go mod init failed: %s: %w", sanitizeOutput(message), err)
 	}
 
-	cmd := exec.CommandContext(ctx, "go", "mod", "download", "-json", target)
-	cmd.Dir = tmpDir
-	cmd.Env = buildCommandEnv(cfg)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("go mod download failed for %s: %s: %w", target, sanitizeOutput(stderr.String()), err)
+	stdout, stderr, err := runCommandFn(ctx, tmpDir, buildCommandEnv(cfg), "go", "mod", "download", "-json", target)
+	if err != nil {
+		return "", fmt.Errorf("go mod download failed for %s: %s: %w", target, sanitizeOutput(string(stderr)), err)
 	}
 
 	var decoded downloadJSON
-	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+	if err := json.Unmarshal(stdout, &decoded); err != nil {
 		return "", fmt.Errorf("failed to parse go mod download result for %s: %w", target, err)
 	}
 	if decoded.Version == "" {
