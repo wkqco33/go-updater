@@ -69,6 +69,25 @@ func TestRemoveUsesPrivilegedCommandForReceiptAndContinuesAfterFailure(t *testin
 	}
 }
 
+func TestRemoveContinuesAfterFilesystemFailure(t *testing.T) {
+	old := runCommandPrivileged
+	called := 0
+	runCommandPrivileged = func(string, ...string) error {
+		called++
+		return nil
+	}
+	t.Cleanup(func() { runCommandPrivileged = old })
+
+	missing := filepath.Join(t.TempDir(), "missing")
+	err := Remove([]PlannedCommand{
+		{Artifact: Artifact{Kind: KindFile, Path: missing, Managed: true}},
+		{Artifact: Artifact{Kind: KindReceipt, Path: "org.golang.go", Managed: true}},
+	})
+	if err == nil || called != 1 {
+		t.Fatalf("error=%v privileged calls=%d", err, called)
+	}
+}
+
 func TestRemoveRejectsUnsafeManagedDirectory(t *testing.T) {
 	if err := Remove([]PlannedCommand{{Artifact: Artifact{Kind: KindDir, Path: t.TempDir(), Managed: true}}}); err == nil {
 		t.Fatal("Remove() error = nil for directory without Go markers")
