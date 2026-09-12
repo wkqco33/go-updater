@@ -83,15 +83,29 @@ func (c *Client) FindReleaseByVersion(ctx context.Context, version string) (*GoR
 		return nil, err
 	}
 
+	// go.dev returns releases newest first, so the first match is the highest
+	// patch release for a minor request like "1.20".
 	for i := range releases {
-		if strings.Count(targetVersion, ".") == 2 && releases[i].Version == targetVersion {
-			return &releases[i], nil
-		}
-		if strings.Count(targetVersion, ".") != 2 && strings.HasPrefix(releases[i].Version, targetVersion) {
+		if matchesReleaseVersion(releases[i].Version, targetVersion, releases[i].Stable) {
 			return &releases[i], nil
 		}
 	}
 	return nil, fmt.Errorf("release not found for version: %s", version)
+}
+
+// matchesReleaseVersion reports whether releaseVersion satisfies the requested
+// version. Exact requests accept any release the user named explicitly (for
+// example "1.21rc1"); a partial request like "1.20" only matches a stable
+// patch release of that minor version and never a different minor such as
+// 1.200 or a pre-release such as 1.20rc1.
+func matchesReleaseVersion(releaseVersion, target string, stable bool) bool {
+	if releaseVersion == target {
+		return true
+	}
+	if !strings.HasPrefix(releaseVersion, target) {
+		return false
+	}
+	return stable && strings.HasPrefix(releaseVersion[len(target):], ".")
 }
 
 func FindMatchingFile(release *GoRelease, osName, arch string) (*GoFile, error) {

@@ -64,39 +64,22 @@ func (s Store) Resolve(requested string) (string, error) {
 	if _, err := os.Stat(filepath.Join(s.versionsDir(), requested)); err == nil {
 		return requested, nil
 	}
+	// A fully specified version must match exactly; only a partial request such
+	// as "1.20" expands to the highest installed patch release, and only when
+	// the next character is a version separator (never "go1.2" matching 1.20).
+	if strings.Count(requested, ".") >= 2 {
+		return "", fmt.Errorf("version %q is not installed", requested)
+	}
 	list, err := s.List()
 	if err != nil {
 		return "", err
 	}
 	for _, version := range list {
-		if strings.HasPrefix(version.Name, requested) {
+		if strings.HasPrefix(version.Name, requested+".") {
 			return version.Name, nil
 		}
 	}
 	return "", fmt.Errorf("version %q is not installed", requested)
-}
-
-func (s Store) Activate(name string) error {
-	if !validVersionName(name) {
-		return fmt.Errorf("invalid Go version: %s", name)
-	}
-	target := filepath.Join(s.versionsDir(), name)
-	if _, err := os.Stat(target); err != nil {
-		return fmt.Errorf("version %q is not installed: %w", name, err)
-	}
-	if err := os.MkdirAll(s.Root, 0o755); err != nil {
-		return err
-	}
-	tmp := s.currentPath() + ".tmp"
-	_ = os.Remove(tmp)
-	if err := os.Symlink(target, tmp); err != nil {
-		return fmt.Errorf("create current symlink: %w", err)
-	}
-	if err := os.Rename(tmp, s.currentPath()); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("replace current symlink: %w", err)
-	}
-	return nil
 }
 
 func (s Store) RemoveAll() error {
