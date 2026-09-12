@@ -31,7 +31,7 @@ OS와 CPU 아키텍처에 맞는 릴리스를 자동으로 설치할 수 있습�
 ppm install wkqco33/go-updater
 ```
 
-소스 코드에서 직접 빌드하려면 Go 1.26.1 이상과 [Task](https://taskfile.dev)가
+소스 코드에서 직접 빌드하려면 Go 1.26.8 이상과 [Task](https://taskfile.dev)가
 필요합니다.
 
 ```bash
