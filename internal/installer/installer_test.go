@@ -7,29 +7,15 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
-
-func TestVerifyChecksum(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "archive.bin")
-	data := []byte("installer test data")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(data)
-	if err := VerifyChecksum(path, hex.EncodeToString(sum[:])); err != nil {
-		t.Fatalf("VerifyChecksum() error = %v", err)
-	}
-	if err := VerifyChecksum(path, "bad"); err == nil {
-		t.Fatal("VerifyChecksum() error = nil for mismatched checksum")
-	}
-}
 
 func TestExtractZip(t *testing.T) {
 	dir := t.TempDir()
@@ -125,7 +111,7 @@ func TestInstallGoCompletesSuccessfulInstallation(t *testing.T) {
 	defer server.Close()
 
 	target := t.TempDir()
-	if err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0"); err != nil {
+	if err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0", Options{Out: io.Discard, Err: io.Discard}); err != nil {
 		t.Fatalf("InstallGo() error = %v", err)
 	}
 	installed := filepath.Join(target, "versions", "go1.23.0")
@@ -164,7 +150,7 @@ func TestInstallGoRollsBackWhenCurrentLinkReplacementFails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0"); err == nil {
+	if err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0", Options{Out: io.Discard, Err: io.Discard}); err == nil {
 		t.Fatal("InstallGo() error = nil when current replacement fails")
 	}
 	if got, err := os.ReadFile(filepath.Join(oldVersion, "old.txt")); err != nil || string(got) != "keep" {
@@ -191,7 +177,7 @@ func TestInstallGoKeepsExistingVersionWhenArchiveIsInvalid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0")
+	err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0", Options{Out: io.Discard, Err: io.Discard})
 	if err == nil {
 		t.Fatal("InstallGo() error = nil for invalid distribution")
 	}
@@ -224,6 +210,123 @@ func makeTarGz(t *testing.T, files map[string]string) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestInstallGoRoutesOutputToInjectedWriters(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tar.gz is not the Windows installer format")
+	}
+	archive := makeTarGz(t, map[string]string{"go/bin/go": "go executable"})
+	sum := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	var out, errOut bytes.Buffer
+	target := t.TempDir()
+	err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0", Options{
+		Out: &out, Err: &errOut, Progress: true,
+	})
+	if err != nil {
+		t.Fatalf("InstallGo() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "설치가 완료되었습니다") {
+		t.Fatalf("stdout = %q, want the completion summary", out.String())
+	}
+	for _, want := range []string{"Downloading", "Checksum OK.", "Extracting"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Fatalf("stderr = %q, want %q", errOut.String(), want)
+		}
+	}
+	if strings.Contains(out.String(), "Downloading") {
+		t.Fatalf("progress leaked to stdout: %q", out.String())
+	}
+}
+
+func TestInstallGoQuietSuppressesProgress(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tar.gz is not the Windows installer format")
+	}
+	archive := makeTarGz(t, map[string]string{"go/bin/go": "go executable"})
+	sum := sha256.Sum256(archive)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	var out, errOut bytes.Buffer
+	target := t.TempDir()
+	err := InstallGo(server.URL+"/go.tar.gz", hex.EncodeToString(sum[:]), target, "go1.23.0", Options{
+		Out: &out, Err: &errOut, Quiet: true, Progress: true,
+	})
+	if err != nil {
+		t.Fatalf("InstallGo() error = %v", err)
+	}
+	if errOut.String() != "" {
+		t.Fatalf("stderr = %q, want empty with quiet", errOut.String())
+	}
+	if !strings.Contains(out.String(), "설치가 완료되었습니다") {
+		t.Fatalf("stdout = %q", out.String())
+	}
+}
+
+func TestInstallGoChecksumMismatchFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tar.gz is not the Windows installer format")
+	}
+	archive := makeTarGz(t, map[string]string{"go/bin/go": "go executable"})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(archive)
+	}))
+	defer server.Close()
+
+	target := t.TempDir()
+	err := InstallGo(server.URL+"/go.tar.gz", "deadbeef", target, "go1.23.0", Options{})
+	if err == nil {
+		t.Fatal("InstallGo() error = nil for a checksum mismatch")
+	}
+	if !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(target, "versions")); !os.IsNotExist(statErr) {
+		t.Fatal("a failed checksum must not leave a version directory behind")
+	}
+}
+
+func TestDownloadFileReportsStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	dest := filepath.Join(t.TempDir(), "archive.tar.gz")
+	if _, err := DownloadFile(server.URL+"/go.tar.gz", dest, nil); err == nil {
+		t.Fatal("DownloadFile() error = nil for a 500 response")
+	}
+}
+
+func TestExtractArchiveReportsProgressToWriter(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tar.gz is not the Windows installer format")
+	}
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "go.tar.gz")
+	if err := os.WriteFile(archivePath, makeTarGz(t, map[string]string{"go/VERSION": "go1.23.0"}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var status bytes.Buffer
+	if err := ExtractArchive(archivePath, filepath.Join(dir, "dest"), &status); err != nil {
+		t.Fatalf("ExtractArchive() error = %v", err)
+	}
+	if !strings.Contains(status.String(), "Extracting") {
+		t.Fatalf("status = %q", status.String())
+	}
+
+	if err := ExtractArchive(archivePath, filepath.Join(dir, "dest2"), nil); err != nil {
+		t.Fatalf("ExtractArchive() with nil status error = %v", err)
+	}
 }
 
 func TestUpdateCurrentSymlink(t *testing.T) {

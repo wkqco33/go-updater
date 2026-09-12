@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -35,7 +36,7 @@ func TestInstallGoCompletesWindowsZipInstallation(t *testing.T) {
 	defer server.Close()
 
 	target := t.TempDir()
-	if err := InstallGo(server.URL+"/go.zip", hex.EncodeToString(sum[:]), target, "go1.23.0"); err != nil {
+	if err := InstallGo(server.URL+"/go.zip", hex.EncodeToString(sum[:]), target, "go1.23.0", Options{Out: io.Discard, Err: io.Discard}); err != nil {
 		t.Fatalf("InstallGo() error = %v", err)
 	}
 	installed := filepath.Join(target, "versions", "go1.23.0", "bin", "go.exe")

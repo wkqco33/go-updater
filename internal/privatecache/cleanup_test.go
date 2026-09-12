@@ -90,3 +90,83 @@ func TestCleanCacheEnforcesMaxSizeByOldestFirst(t *testing.T) {
 		t.Fatal("newest file was removed")
 	}
 }
+
+func TestCleanCacheAllCountsNestedEntries(t *testing.T) {
+	dir := t.TempDir()
+	cacheDir := filepath.Join(dir, "cache")
+	nested := filepath.Join(cacheDir, "a", "b")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCacheFile(t, cacheDir, "top", 5, 0)
+	writeCacheFile(t, nested, "deep", 7, 0)
+
+	result, err := CleanCache(Config{CacheDir: cacheDir}, filepath.Join(dir, "metadata.json"), CleanOptions{All: true})
+	if err != nil {
+		t.Fatalf("CleanCache() error = %v", err)
+	}
+	if result.FreedBytes != 12 {
+		t.Fatalf("FreedBytes = %d, want 12", result.FreedBytes)
+	}
+	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
+		t.Fatal("cache directory still exists")
+	}
+}
+
+func TestCleanCacheAllOnMissingCacheIsNoop(t *testing.T) {
+	dir := t.TempDir()
+	result, err := CleanCache(Config{CacheDir: filepath.Join(dir, "missing")}, filepath.Join(dir, "metadata.json"), CleanOptions{All: true})
+	if err != nil {
+		t.Fatalf("CleanCache() error = %v", err)
+	}
+	if result.FreedBytes != 0 || result.RemovedFiles != 0 {
+		t.Fatalf("result = %+v, want zeroes", result)
+	}
+}
+
+func TestCleanCacheDryRunReportsStaleFilesWithoutRemoving(t *testing.T) {
+	dir := t.TempDir()
+	stale := writeCacheFile(t, dir, "old", 7, 48*time.Hour)
+	fresh := writeCacheFile(t, dir, "fresh", 11, time.Hour)
+
+	result, err := CleanCache(Config{CacheDir: dir}, filepath.Join(dir, "metadata.json"), CleanOptions{StaleDays: 1, DryRun: true})
+	if err != nil {
+		t.Fatalf("CleanCache() error = %v", err)
+	}
+	if result.RemovedFiles != 1 || result.FreedBytes != 7 || result.FinalSize != 11 {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := os.Stat(stale); err != nil {
+		t.Fatal("dry-run removed a stale file")
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatal("dry-run removed a fresh file")
+	}
+}
+
+func TestCleanCacheAllDryRunKeepsCacheAndMetadata(t *testing.T) {
+	dir := t.TempDir()
+	cacheDir := filepath.Join(dir, "cache")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCacheFile(t, cacheDir, "module.zip", 10, 0)
+	metadata := filepath.Join(dir, "metadata.json")
+	if err := os.WriteFile(metadata, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := CleanCache(Config{CacheDir: cacheDir}, metadata, CleanOptions{All: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("CleanCache() error = %v", err)
+	}
+	if result.RemovedFiles != 1 || result.FreedBytes != 10 || result.FinalSize != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := os.Stat(cacheDir); err != nil {
+		t.Fatal("dry-run removed the cache directory")
+	}
+	if _, err := os.Stat(metadata); err != nil {
+		t.Fatal("dry-run removed the metadata file")
+	}
+}

@@ -1,37 +1,27 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/wkqco33/go-updater/internal/systemgo"
-	"github.com/wkqco33/go-updater/internal/versions"
 
 	"github.com/wkqco33/go-updater/internal/cli"
+	"github.com/wkqco33/go-updater/internal/guenv"
+	"github.com/wkqco33/go-updater/internal/systemgo"
+	"github.com/wkqco33/go-updater/internal/versions"
 )
 
 var (
 	cleanAll    bool
 	cleanUnused bool
 	cleanSystem bool
-	userHomeDir = os.UserHomeDir
 )
 
-// confirmAction asks the user to confirm by typing 'y' or 'Y'.
-func confirmAction(prompt string, in io.Reader, out io.Writer) bool {
-	fmt.Fprintf(out, "%s [y/N]: ", prompt)
-	scanner := bufio.NewScanner(in)
-	if scanner.Scan() {
-		answer := strings.TrimSpace(scanner.Text())
-		return strings.EqualFold(answer, "y")
-	}
-	return false
-}
+// detectSystemGo and removeSystemGo are seams so the system cleanup flow can be
+// tested without touching real system paths or invoking sudo.
+var (
+	detectSystemGo = systemgo.Detect
+	removeSystemGo = systemgo.Remove
+)
 
 // artifactLabel returns the human-readable name shown in the detection
 // checklist for one artifact.
@@ -51,8 +41,9 @@ func artifactLabel(a systemgo.Artifact) string {
 // runCleanSystem detects go.dev pkg / Homebrew Go installations and, after
 // showing exactly which commands will run, removes what gu is allowed to
 // manage. Root-owned paths are removed via sudo, prompting for a password.
-func runCleanSystem(in io.Reader, out io.Writer) error {
-	items, err := systemgo.Detect()
+func runCleanSystem(cmd *cli.Command) error {
+	out := cmd.OutOrStdout()
+	items, err := detectSystemGo()
 	if err != nil {
 		return fmt.Errorf("failed to detect system Go installation: %w", err)
 	}
@@ -100,12 +91,21 @@ func runCleanSystem(in io.Reader, out io.Writer) error {
 		fmt.Fprintln(out, "  "+step.Display)
 	}
 
-	if !confirmAction("\n계속하시겠습니까?", in, out) {
-		fmt.Fprintln(out, "취소되었습니다.")
+	if globals.DryRun {
+		fmt.Fprintln(out, "dry-run: 위 명령을 실행하지 않았습니다.")
 		return nil
 	}
 
-	if err := systemgo.Remove(plan); err != nil {
+	approved, err := confirm(cmd, "\n계속하시겠습니까?")
+	if err != nil {
+		return err
+	}
+	if !approved {
+		fmt.Fprintln(cmd.ErrOrStderr(), "취소되었습니다.")
+		return nil
+	}
+
+	if err := removeSystemGo(plan); err != nil {
 		return fmt.Errorf("failed to remove system Go installation: %w", err)
 	}
 
@@ -121,80 +121,122 @@ func runCleanSystem(in io.Reader, out io.Writer) error {
 var cleanCmd = &cli.Command{
 	Use:   "clean [version]",
 	Short: "설치된 Go 버전들을 삭제하여 용량을 확보합니다.",
-	Long:  `지정한 특정 버전, 사용하지 않는 모든 버전(--unused), 또는 모든 버전(--all)을 삭제합니다.`,
-	Args:  cli.MaximumNArgs(1),
+	Long: `지정한 버전, 사용하지 않는 버전(--unused), 또는 모든 버전(--all)을 삭제합니다.
+여러 버전을 한 번에 지우는 작업은 확인 프롬프트를 거치며, 비대화형 환경에서는
+--yes로 승인하거나 --dry-run으로 계획만 확인할 수 있습니다.
+
+예시:
+  gu clean 1.20.5        특정 버전 삭제
+  gu clean --unused      사용하지 않는 버전 삭제
+  gu clean --all --yes   모든 버전 삭제 (비대화형)
+  gu clean --system      go.dev 시스템 설치 정리
+  gu clean --all --dry-run  삭제 대상만 확인
+
+문서: ` + docsURL + `
+이슈: ` + issuesURL,
+	Args: cli.MaximumNArgs(1),
 	RunE: func(cmd *cli.Command, args []string) error {
 		slog.Debug("clean command started")
 
-		homeDir, err := userHomeDir()
+		root, err := guenv.Resolve(globals.Home)
 		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
+			return err
 		}
-		targetDir := filepath.Join(homeDir, ".go")
-		store := versions.NewStore(targetDir)
+		store := versions.NewStore(root)
 		currentVersion, err := store.Active()
 		if err != nil {
 			return err
 		}
+		out := cmd.OutOrStdout()
 
 		// 1. Handle --all flag
 		if cleanAll {
-			fmt.Fprintln(cmd.OutOrStdout(), "모든 설치된 Go 버전을 삭제합니다...")
+			statusf(cmd, "모든 설치된 Go 버전을 삭제합니다...\n")
+			if globals.DryRun {
+				fmt.Fprintf(out, "dry-run: %s 의 모든 버전과 current 링크를 삭제합니다\n", root)
+				return nil
+			}
+			approved, err := confirm(cmd, "모든 Go 버전을 삭제할까요?")
+			if err != nil {
+				return err
+			}
+			if !approved {
+				fmt.Fprintln(cmd.ErrOrStderr(), "취소되었습니다.")
+				return nil
+			}
 			if err := store.RemoveAll(); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "모든 버전이 삭제되었습니다.")
+			fmt.Fprintln(out, "모든 버전이 삭제되었습니다.")
 			return nil
 		}
 
 		// 2. Handle specific version deletion
 		if len(args) > 0 {
-			version := args[0]
-			targetVersion := version
-			if !strings.HasPrefix(targetVersion, "go") {
-				targetVersion = "go" + targetVersion
-			}
-
-			if targetVersion == currentVersion {
-				fmt.Fprintf(cmd.OutOrStdout(), "버전 %s는 현재 활성화되어 사용 중이므로 삭제할 수 없습니다. 'use' 명령어로 다른 버전으로 전환 후 삭제하세요.\n", targetVersion)
+			resolved, err := store.Resolve(args[0])
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "경고: %v\n", err)
 				return nil
 			}
-
-			if _, err := store.Resolve(targetVersion); err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "버전 %s가 설치되어 있지 않습니다.\n", targetVersion)
+			if resolved == currentVersion {
+				fmt.Fprintf(cmd.ErrOrStderr(), "경고: %s는 현재 활성화되어 사용 중이므로 삭제할 수 없습니다. 'use' 명령어로 다른 버전으로 전환 후 삭제하세요.\n", resolved)
 				return nil
 			}
-
-			fmt.Fprintf(cmd.OutOrStdout(), "버전 %s를 삭제합니다...\n", targetVersion)
-			if err := store.Remove(targetVersion); err != nil {
+			if globals.DryRun {
+				fmt.Fprintf(out, "dry-run: %s 를 삭제합니다\n", resolved)
+				return nil
+			}
+			statusf(cmd, "버전 %s를 삭제합니다...\n", resolved)
+			if err := store.Remove(resolved); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "버전 %s가 성공적으로 삭제되었습니다.\n", targetVersion)
+			fmt.Fprintf(out, "버전 %s가 성공적으로 삭제되었습니다.\n", resolved)
 			return nil
 		}
 
 		// 3. Handle --unused flag
 		if cleanUnused {
 			if currentVersion == "" {
-				fmt.Fprintln(cmd.OutOrStdout(), "현재 활성화된 버전 정보가 없습니다. 모든 버전을 삭제하시려면 --all을 사용하세요.")
+				fmt.Fprintln(cmd.ErrOrStderr(), "현재 활성화된 버전 정보가 없습니다. 모든 버전을 삭제하시려면 --all을 사용하세요.")
 				return nil
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "현재 사용 중인 버전(%s)을 제외한 모든 버전을 삭제합니다...\n", currentVersion)
+			statusf(cmd, "현재 사용 중인 버전(%s)을 제외한 모든 버전을 삭제합니다...\n", currentVersion)
+			if globals.DryRun {
+				list, err := store.List()
+				if err != nil {
+					return err
+				}
+				for _, version := range list {
+					if version.Name != currentVersion {
+						fmt.Fprintf(out, "dry-run: %s 를 삭제합니다\n", version.Name)
+					}
+				}
+				return nil
+			}
+			approved, err := confirm(cmd, "현재 사용 중인 버전을 제외한 모든 버전을 삭제할까요?")
+			if err != nil {
+				return err
+			}
+			if !approved {
+				fmt.Fprintln(cmd.ErrOrStderr(), "취소되었습니다.")
+				return nil
+			}
+
 			removed, err := store.RemoveUnused()
 			if err != nil {
 				return err
 			}
 			for _, version := range removed {
-				fmt.Fprintf(cmd.OutOrStdout(), "  삭제됨: %s\n", version)
+				fmt.Fprintf(out, "  삭제됨: %s\n", version)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", len(removed))
+			fmt.Fprintf(out, "총 %d개의 사용하지 않는 버전이 삭제되었습니다.\n", len(removed))
 			return nil
 		}
 
 		// 4. Handle --system flag: remove go.dev system installation
 		if cleanSystem {
-			return runCleanSystem(cmd.InOrStdin(), cmd.OutOrStdout())
+			return runCleanSystem(cmd)
 		}
 
 		// 5. Default: No args and no flags

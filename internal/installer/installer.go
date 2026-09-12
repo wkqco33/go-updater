@@ -29,8 +29,43 @@ var downloadClient = &http.Client{
 	},
 }
 
-// progressWriter는 io.Writer를 감싸 다운로드 진행률을 출력한다.
+// Options controls installer output. A nil Out or Err discards that stream so
+// the library never writes to the process streams on its own.
+type Options struct {
+	// Out receives results such as the final summary and PATH guidance.
+	Out io.Writer
+	// Err receives progress and status messages.
+	Err io.Writer
+	// Quiet suppresses progress and status messages.
+	Quiet bool
+	// Progress renders download percentages (terminal output only).
+	Progress bool
+}
+
+func (o Options) out() io.Writer {
+	if o.Out == nil {
+		return io.Discard
+	}
+	return o.Out
+}
+
+func (o Options) err() io.Writer {
+	if o.Err == nil {
+		return io.Discard
+	}
+	return o.Err
+}
+
+func (o Options) status(format string, args ...any) {
+	if o.Quiet {
+		return
+	}
+	fmt.Fprintf(o.err(), format, args...)
+}
+
+// progressWriter renders download progress to a caller-provided writer.
 type progressWriter struct {
+	out     io.Writer
 	total   int64 // 전체 크기 (0이면 알 수 없음)
 	written int64
 	lastPct int
@@ -43,17 +78,18 @@ func (p *progressWriter) Write(b []byte) (int, error) {
 		pct := int(p.written * 100 / p.total)
 		if pct >= p.lastPct+5 {
 			p.lastPct = pct
-			fmt.Printf("\r  %d%% (%d / %d MB)", pct, p.written/1024/1024, p.total/1024/1024)
+			fmt.Fprintf(p.out, "\r  %d%% (%d / %d MB)", pct, p.written/1024/1024, p.total/1024/1024)
 		}
 	} else {
-		fmt.Printf("\r  %.1f MB", float64(p.written)/1024/1024)
+		fmt.Fprintf(p.out, "\r  %.1f MB", float64(p.written)/1024/1024)
 	}
 	return n, nil
 }
 
-// DownloadFile downloads a file from the URL to the destination.
-// SHA256 해시를 다운로드와 동시에 계산해 반환한다 (파일 재읽기 없음).
-func DownloadFile(url, dest string) (string, error) {
+// DownloadFile downloads url into dest and returns the SHA256 of the stream as
+// it is written (no second pass over the file). progress receives percentage
+// updates when non-nil.
+func DownloadFile(url, dest string, progress io.Writer) (string, error) {
 	slog.Debug("starting file download", "url", url, "dest", dest)
 	resp, err := downloadClient.Get(url)
 	if err != nil {
@@ -71,12 +107,16 @@ func DownloadFile(url, dest string) (string, error) {
 	}
 	defer out.Close()
 
-	fmt.Printf("Downloading %s...\n", url)
-	pw := &progressWriter{total: resp.ContentLength}
+	sink := io.Writer(out)
+	if progress != nil {
+		sink = io.MultiWriter(out, &progressWriter{out: progress, total: resp.ContentLength})
+	}
+
 	h := sha256.New()
-	// TeeReader: body → hash 계산, MultiWriter: file 저장 + 진행률 동시 출력
-	written, err := io.Copy(io.MultiWriter(out, pw), io.TeeReader(resp.Body, h))
-	fmt.Println() // 진행률 줄 마무리
+	written, err := io.Copy(sink, io.TeeReader(resp.Body, h))
+	if progress != nil {
+		fmt.Fprintln(progress)
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to write to file: %w", err)
 	}
@@ -84,32 +124,13 @@ func DownloadFile(url, dest string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// VerifyChecksum verifies the SHA256 checksum of a file.
-func VerifyChecksum(filePath, expectedSha256 string) error {
-	slog.Debug("verifying checksum", "file", filePath, "expected", expectedSha256)
-	f, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return err
-	}
-
-	actualSha256 := hex.EncodeToString(h.Sum(nil))
-	slog.Debug("checksum calculated", "actual", actualSha256)
-	if actualSha256 != expectedSha256 {
-		return fmt.Errorf("checksum mismatch: expected %s, got %s", expectedSha256, actualSha256)
-	}
-	return nil
-}
-
-// ExtractArchive extracts the downloaded archive.
-func ExtractArchive(archivePath, destDir string) error {
+// ExtractArchive extracts the downloaded archive, reporting progress to
+// status when it is non-nil.
+func ExtractArchive(archivePath, destDir string, status io.Writer) error {
 	slog.Debug("extracting archive", "archive", archivePath, "dest", destDir, "os", runtime.GOOS)
-	fmt.Printf("Extracting %s to %s...\n", archivePath, destDir)
+	if status != nil {
+		fmt.Fprintf(status, "Extracting %s to %s...\n", archivePath, destDir)
+	}
 
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
@@ -285,8 +306,10 @@ func UpdateCurrentSymlink(targetDir, goDir string) error {
 	return nil
 }
 
-// InstallGo handles the complete flow of downloading and installing.
-func InstallGo(url, sha256Str string, targetDir string, version string) error {
+// InstallGo handles the complete flow of downloading and installing. Output
+// is fully caller-controlled through opts so the CLI can keep stdout reserved
+// for results.
+func InstallGo(url, sha256Str string, targetDir string, version string, opts Options) error {
 	tmpDir, err := os.MkdirTemp("", "go-updater-install-*")
 	if err != nil {
 		return fmt.Errorf("failed to create install temp directory: %w", err)
@@ -296,8 +319,12 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	slog.Debug("install process started", "tmp_archive", archivePath, "target_dir", targetDir, "version", version)
 
 	// 1. Download + SHA256 동시 계산 (단일 패스)
-	fmt.Println("Verifying checksum...")
-	actualSha256, err := DownloadFile(url, archivePath)
+	opts.status("Downloading %s...\n", url)
+	var progress io.Writer
+	if opts.Progress && !opts.Quiet {
+		progress = opts.err()
+	}
+	actualSha256, err := DownloadFile(url, archivePath, progress)
 	if err != nil {
 		return err
 	}
@@ -307,7 +334,7 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 	if actualSha256 != sha256Str {
 		return fmt.Errorf("checksum mismatch: expected %s, got %s", sha256Str, actualSha256)
 	}
-	fmt.Println("Checksum OK.")
+	opts.status("Checksum OK.\n")
 
 	// 3. Prepare target directory (~/.go/versions/go<version>)
 	versionsDir := filepath.Join(targetDir, "versions")
@@ -327,7 +354,11 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 		return err
 	}
 
-	if err := ExtractArchive(archivePath, extractTmp); err != nil {
+	var extractStatus io.Writer
+	if !opts.Quiet {
+		extractStatus = opts.err()
+	}
+	if err := ExtractArchive(archivePath, extractTmp, extractStatus); err != nil {
 		os.RemoveAll(extractTmp)
 		return err
 	}
@@ -361,13 +392,13 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 		return err
 	}
 
-	fmt.Printf("\n설치가 완료되었습니다! Go %s 버전이 %s 에 설치되었습니다.\n", version, finalGoDir)
+	fmt.Fprintf(opts.out(), "\n설치가 완료되었습니다! Go %s 버전이 %s 에 설치되었습니다.\n", version, finalGoDir)
 	currentLink := filepath.Join(targetDir, "current")
 	binDir := filepath.Join(currentLink, "bin")
 
-	fmt.Println("\n[환경 변수(PATH) 설정 안내]")
+	fmt.Fprintln(opts.out(), "\n[환경 변수(PATH) 설정 안내]")
 	if runtime.GOOS == "windows" {
-		fmt.Printf("Windows 시스템 환경 변수 편집에서 다음 경로를 PATH에 추가하세요:\n  %s\n", binDir)
+		fmt.Fprintf(opts.out(), "Windows 시스템 환경 변수 편집에서 다음 경로를 PATH에 추가하세요:\n  %s\n", binDir)
 	} else {
 		shell := os.Getenv("SHELL")
 		configFiles := []string{".bashrc", ".profile"}
@@ -375,12 +406,12 @@ func InstallGo(url, sha256Str string, targetDir string, version string) error {
 			configFiles = []string{".zshrc"}
 		}
 
-		fmt.Println("터미널에서 아래 명령어를 실행하여 PATH를 설정할 수 있습니다:")
+		fmt.Fprintln(opts.out(), "터미널에서 아래 명령어를 실행하여 PATH를 설정할 수 있습니다:")
 		for _, file := range configFiles {
-			fmt.Printf("  echo 'export PATH=$PATH:%s' >> ~/%s\n", binDir, file)
+			fmt.Fprintf(opts.out(), "  echo 'export PATH=$PATH:%s' >> ~/%s\n", binDir, file)
 		}
-		fmt.Println("\n설정 후에는 터미널을 재시작하거나 'source' 명령어로 설정을 적용하세요.")
-		fmt.Printf("  source ~/%s\n", configFiles[0])
+		fmt.Fprintln(opts.out(), "\n설정 후에는 터미널을 재시작하거나 'source' 명령어로 설정을 적용하세요.")
+		fmt.Fprintf(opts.out(), "  source ~/%s\n", configFiles[0])
 	}
 
 	return nil

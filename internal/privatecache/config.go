@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/wkqco33/go-updater/internal/guenv"
 )
 
 const (
@@ -23,12 +25,13 @@ type Config struct {
 	CacheDir        string   `json:"cache_dir"`
 }
 
+// DefaultBaseDir returns $GU_HOME/private or ~/.go/private.
 func DefaultBaseDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	root, err := guenv.Root()
 	if err != nil {
-		return "", fmt.Errorf("failed to get user home directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(homeDir, ".go", "private"), nil
+	return guenv.PrivateDir(root), nil
 }
 
 func DefaultConfigPath() (string, error) {
@@ -47,14 +50,15 @@ func DefaultMetadataPath() (string, error) {
 	return filepath.Join(baseDir, metadataFileName), nil
 }
 
+// DefaultConfig returns the configuration used when no config file exists yet.
 func DefaultConfig() (Config, error) {
-	baseDir, err := DefaultBaseDir()
+	root, err := guenv.Root()
 	if err != nil {
 		return Config{}, err
 	}
 	return Config{
 		Version:  1,
-		CacheDir: filepath.Join(baseDir, "modcache"),
+		CacheDir: guenv.CacheDir(root),
 	}, nil
 }
 

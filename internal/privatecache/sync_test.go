@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseModuleSpec(t *testing.T) {
@@ -107,8 +108,8 @@ func TestDownloadModuleWithRetryRetriesAndReturnsLastError(t *testing.T) {
 func TestDownloadModuleUsesInjectedCommandRunner(t *testing.T) {
 	old := runCommandFn
 	var calls []string
-	runCommandFn = func(_ context.Context, dir string, env []string, name string, args ...string) ([]byte, []byte, error) {
-		calls = append(calls, name+" "+filepath.Base(dir)+" "+strings.Join(args, " "))
+	runCommandFn = func(_ context.Context, dir string, env []string, args ...string) ([]byte, []byte, error) {
+		calls = append(calls, "go "+filepath.Base(dir)+" "+strings.Join(args, " "))
 		if args[1] == "download" && !strings.Contains(strings.Join(env, "\n"), "GO111MODULE=on") {
 			return nil, nil, errors.New("GO111MODULE was not configured")
 		}
@@ -148,5 +149,70 @@ func TestSyncModulesSkipsExistingResolvedVersion(t *testing.T) {
 		metadataPath, []string{"github.com/acme/lib@v1.0.0"}, 1, false, "test")
 	if err != nil || called || len(result.Skipped) != 1 {
 		t.Fatalf("result=%#v err=%v called=%v", result, err, called)
+	}
+}
+
+func TestDownloadModuleWithRetryBacksOffBetweenAttempts(t *testing.T) {
+	oldDownload, oldSleep := downloadModuleFn, sleepFn
+	t.Cleanup(func() { downloadModuleFn, sleepFn = oldDownload, oldSleep })
+
+	attempts := 0
+	downloadModuleFn = func(context.Context, Config, string) (string, error) {
+		attempts++
+		if attempts < 3 {
+			return "", errors.New("temporary failure")
+		}
+		return "v1.0.0", nil
+	}
+	var delays []time.Duration
+	sleepFn = func(_ context.Context, d time.Duration) error {
+		delays = append(delays, d)
+		return nil
+	}
+
+	resolved, err := downloadModuleWithRetry(context.Background(), Config{}, "github.com/acme/lib", "v1.0.0", 3)
+	if err != nil {
+		t.Fatalf("error = %v", err)
+	}
+	if resolved != "v1.0.0" || attempts != 3 {
+		t.Fatalf("resolved = %q, attempts = %d", resolved, attempts)
+	}
+	if len(delays) != 2 {
+		t.Fatalf("delays = %#v, want one delay per retry", delays)
+	}
+	for i, d := range delays {
+		if d <= 0 || d > 2*time.Second {
+			t.Fatalf("delay %d = %v, want a positive delay capped at 2s", i, d)
+		}
+	}
+}
+
+func TestDownloadModuleWithRetryStopsWhenContextIsCancelled(t *testing.T) {
+	oldDownload, oldSleep := downloadModuleFn, sleepFn
+	t.Cleanup(func() { downloadModuleFn, sleepFn = oldDownload, oldSleep })
+
+	downloadModuleFn = func(context.Context, Config, string) (string, error) {
+		return "", errors.New("temporary failure")
+	}
+	sleepFn = func(context.Context, time.Duration) error { return context.Canceled }
+
+	_, err := downloadModuleWithRetry(context.Background(), Config{}, "github.com/acme/lib", "v1.0.0", 5)
+	if err == nil {
+		t.Fatal("error = nil, want cancellation error")
+	}
+	if !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("error = %v, want cancellation context", err)
+	}
+}
+
+func TestRetryDelayIsPositiveAndCapped(t *testing.T) {
+	for attempt := 1; attempt <= 12; attempt++ {
+		d := retryDelay(attempt)
+		if d <= 0 || d > 2*time.Second {
+			t.Fatalf("retryDelay(%d) = %v, want 0 < delay <= 2s", attempt, d)
+		}
+	}
+	if d := retryDelay(0); d <= 0 || d > 2*time.Second {
+		t.Fatalf("retryDelay(0) = %v, want a capped delay", d)
 	}
 }

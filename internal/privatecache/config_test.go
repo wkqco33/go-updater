@@ -81,3 +81,48 @@ func TestSaveConfigRejectsEmptyCacheDir(t *testing.T) {
 		t.Fatalf("expected config file to not be created, stat err = %v", statErr)
 	}
 }
+
+func TestDefaultPathsHonorGuHomeAndXDGCacheHome(t *testing.T) {
+	root := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("GU_HOME", root)
+	t.Setenv("XDG_CACHE_HOME", xdg)
+
+	base, err := DefaultBaseDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "private"); base != want {
+		t.Fatalf("DefaultBaseDir() = %q, want %q", base, want)
+	}
+
+	cfg, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(xdg, "go-updater", "modcache"); cfg.CacheDir != want {
+		t.Fatalf("DefaultConfig().CacheDir = %q, want %q", cfg.CacheDir, want)
+	}
+
+	configPath, err := DefaultConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "private", "config.json"); configPath != want {
+		t.Fatalf("DefaultConfigPath() = %q, want %q", configPath, want)
+	}
+}
+
+func TestDefaultConfigKeepsCacheUnderRootWithoutXDG(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GU_HOME", root)
+	t.Setenv("XDG_CACHE_HOME", "")
+
+	cfg, err := DefaultConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(root, "private", "modcache"); cfg.CacheDir != want {
+		t.Fatalf("DefaultConfig().CacheDir = %q, want %q", cfg.CacheDir, want)
+	}
+}

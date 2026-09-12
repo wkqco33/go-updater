@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"strings"
@@ -121,6 +122,39 @@ func SyncModules(ctx context.Context, cfg Config, metadataPath string, specs []s
 	return result, nil
 }
 
+// sleepFn waits for the retry backoff. It is a seam so tests can assert the
+// backoff schedule without waiting.
+var sleepFn = func(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+// retryDelay returns the exponential backoff with jitter for a 1-based
+// attempt, capped at two seconds.
+func retryDelay(attempt int) time.Duration {
+	const (
+		base = 100 * time.Millisecond
+		max  = 2 * time.Second
+	)
+	if attempt < 1 {
+		attempt = 1
+	}
+	if attempt > 20 {
+		attempt = 20
+	}
+	delay := base << (attempt - 1)
+	if delay > max {
+		delay = max
+	}
+	return delay/2 + time.Duration(rand.Int64N(int64(delay/2)+1))
+}
+
 func downloadModuleWithRetry(ctx context.Context, cfg Config, module, version string, retries int) (string, error) {
 	target := module + "@" + version
 	var lastErr error
@@ -130,12 +164,22 @@ func downloadModuleWithRetry(ctx context.Context, cfg Config, module, version st
 			return resolved, nil
 		}
 		lastErr = err
+		if i == retries {
+			break
+		}
+		if err := sleepFn(ctx, retryDelay(i)); err != nil {
+			return "", fmt.Errorf("download %s cancelled: %w", target, err)
+		}
 	}
 	return "", fmt.Errorf("failed to download %s after %d attempts: %w", target, retries, lastErr)
 }
 
-func runCommand(ctx context.Context, dir string, env []string, name string, args ...string) ([]byte, []byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+// goExecutable is the only external binary this package runs; keeping it
+// static means a module spec can never turn into arbitrary command execution.
+const goExecutable = "go"
+
+func runCommand(ctx context.Context, dir string, env []string, args ...string) ([]byte, []byte, error) {
+	cmd := exec.CommandContext(ctx, goExecutable, args...)
 	cmd.Dir = dir
 	cmd.Env = env
 	var stdout, stderr bytes.Buffer
@@ -152,7 +196,7 @@ func downloadModule(ctx context.Context, cfg Config, target string) (string, err
 	}
 	defer os.RemoveAll(tmpDir)
 
-	initOut, initErrOut, err := runCommandFn(ctx, tmpDir, nil, "go", "mod", "init", "go_updater_private_sync_tmp")
+	initOut, initErrOut, err := runCommandFn(ctx, tmpDir, nil, "mod", "init", "go_updater_private_sync_tmp")
 	if err != nil {
 		message := string(initErrOut)
 		if message == "" {
@@ -161,7 +205,7 @@ func downloadModule(ctx context.Context, cfg Config, target string) (string, err
 		return "", fmt.Errorf("go mod init failed: %s: %w", sanitizeOutput(message), err)
 	}
 
-	stdout, stderr, err := runCommandFn(ctx, tmpDir, buildCommandEnv(cfg), "go", "mod", "download", "-json", target)
+	stdout, stderr, err := runCommandFn(ctx, tmpDir, buildCommandEnv(cfg), "mod", "download", "-json", target)
 	if err != nil {
 		return "", fmt.Errorf("go mod download failed for %s: %s: %w", target, sanitizeOutput(string(stderr)), err)
 	}
