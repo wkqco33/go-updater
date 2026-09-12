@@ -8,7 +8,11 @@ Thank you for helping improve `gu`.
 2. Add or update tests before changing the implementation when practical.
 3. Keep filesystem, network, and external-command boundaries injectable in tests.
 4. Do not include credentials, private module contents, local paths, or generated binaries.
-5. Run the same checks used by CI:
+5. Keep removals backward compatible: deprecate a flag or command for at least one
+   minor release with a runtime warning before removing it in a major release.
+6. Never widen output contracts without updating `README.md` (stdout stays for
+   results; progress, prompts, and errors go to stderr).
+7. Run the same checks used by CI:
 
 ```bash
 gofmt -w <changed-go-files>
@@ -17,7 +21,7 @@ go vet ./...
 go test -race ./...
 ```
 
-For behavior changes, update `README.md` and `CHANGE_LOG.md` as appropriate.
+For behavior changes, update `README.md` and `CHANGELOG.md` as appropriate.
 
 ## Pull requests
 

@@ -53,6 +53,29 @@ go tool cover -func=coverage.out
 - 설치/삭제는 실패 시 기존 상태를 보존하거나 명확히 rollback합니다.
 - 시스템 경로 삭제는 allowlist와 안전성 검사를 우회하지 않습니다.
 - 새 기능을 추가할 때 package-level mutable state를 늘리지 않습니다.
+- 홈/루트 경로는 `os.UserHomeDir()`을 직접 부르지 말고 `internal/guenv`를 사용합니다.
+
+## CLI 계약
+
+사용자에게 보이는 계약을 바꿀 때는 README와 CHANGELOG를 함께 갱신합니다.
+
+- **종료 코드**: `main.go`는 `cmd.ExitCode(err)`만 사용합니다. `0` 성공, `1` 실행
+  오류, `2` 사용법 오류(`internal/cli.UsageError`)입니다. 새 사용법 오류는
+  `cli.NewUsageError(err)`로 감싸야 합니다.
+- **스트림**: 결과는 stdout, 진행·상태·경고·오류·프롬프트는 stderr입니다. 라이브러리
+  패키지는 `fmt.Print*`로 프로세스 스트림에 직접 쓰지 않고 writer를 주입받습니다
+  (`installer.Options` 참고).
+- **진행률/색상**: TTY가 아니거나 `--quiet`/`--no-color`/`NO_COLOR`이면 끕니다.
+  판별은 `internal/prompt`의 `IsTerminal`/`IsTerminalWriter`를 사용합니다.
+- **확인**: 파괴적 작업은 `confirm(cmd, question)`을 거칩니다. 비대화형에서 확인이
+  불가능하면 `--yes`를 안내하는 사용법 오류(종료 코드 2)로 실패하고, 사용자가 명시적으로
+  거부하면 안내 후 종료 코드 `0`으로 끝냅니다. `--dry-run`은 삭제/설치 없이 계획만
+  출력합니다.
+- **플래그**: 새 전역 플래그는 `cmd/globals.go`의 `GlobalOptions`에만 추가하고
+  `registerGlobalFlags`에 등록합니다. 기존 플래그·명령 제거는 최소 한 마이너 버전의
+  deprecation 경고를 거친 뒤 메이저에서 수행합니다.
+- **도움말**: `Long`에 예시와 문서/이슈 링크를 포함합니다. 사용 경로는 어댑터가 전체
+  경로(`gu install [version]`)로 렌더링합니다.
 
 ## 코드 리뷰 체크리스트
 
@@ -62,6 +85,9 @@ go tool cover -func=coverage.out
 - [ ] 기존 설치나 캐시를 손상시키지 않는가?
 - [ ] 모든 변경 파일에 대해 gofmt, test, vet, race를 실행했는가?
 - [ ] 커버리지 감소와 테스트되지 않은 핵심 경로가 없는가?
+- [ ] 새 출력이 stdout/stderr 계약과 종료 코드 계약을 지키는가?
+- [ ] 파괴적 작업에 확인·`--yes`·`--dry-run` 경로 테스트가 있는가?
+- [ ] 문서(README/CHANGELOG/도움말)가 실제 동작과 일치하는가?
 
 ## 커밋
 
