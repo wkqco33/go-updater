@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wkqco33/go-updater/internal/systemgo"
 )
 
 func TestVersionCommandWritesToConfiguredOutput(t *testing.T) {
@@ -109,6 +111,19 @@ func TestListCommandEmitsJSON(t *testing.T) {
 	}
 	if parsed.Root != root || parsed.Current != "go1.23.0" || len(parsed.Versions) != 1 || !parsed.Versions[0].Active {
 		t.Fatalf("parsed = %+v", parsed)
+	}
+}
+
+func TestRunRootCommandRestoresFlagState(t *testing.T) {
+	withGlobals(t, GlobalOptions{})
+	withSystemSeams(t, func() ([]systemgo.Present, error) { return nil, nil }, func([]systemgo.PlannedCommand) error { return nil })
+
+	before := snapshotFlags()
+	if _, _, err := runRootCommand(t, "clean", "--system", "--yes", "--dry-run", "--quiet"); err != nil {
+		t.Fatalf("ExecuteArgs() error = %v", err)
+	}
+	if after := snapshotFlags(); after != before {
+		t.Fatalf("flag state leaked from a root command run:\nbefore %+v\nafter  %+v", before, after)
 	}
 }
 

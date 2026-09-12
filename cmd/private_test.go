@@ -8,16 +8,18 @@ import (
 	"time"
 
 	"github.com/wkqco33/go-updater/internal/cli"
+	"github.com/wkqco33/go-updater/internal/privatecache"
 )
 
+// writePrivateConfig persists a real config file so tests parse what the
+// command writes instead of hand-built JSON, which breaks on Windows paths.
 func writePrivateConfig(t *testing.T, root, cacheDir string) {
 	t.Helper()
-	dir := filepath.Join(root, "private")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"version":1,"private_patterns":["github.com/acme/*"],"cache_dir":"` + cacheDir + `"}`
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(body), 0o644); err != nil {
+	if err := privatecache.SaveConfig(filepath.Join(root, "private", "config.json"), privatecache.Config{
+		Version:         1,
+		PrivatePatterns: []string{"github.com/acme/*"},
+		CacheDir:        cacheDir,
+	}); err != nil {
 		t.Fatal(err)
 	}
 }

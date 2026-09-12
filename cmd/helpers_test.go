@@ -39,6 +39,74 @@ func withTTY(t *testing.T, isTTY bool) {
 	t.Cleanup(func() { promptIsTTY = previous })
 }
 
+// flagSnapshot captures every package-level flag value that executing a
+// command can mutate. CI runs the suite with -shuffle=on, so flag state left
+// behind by one test must never decide another test's outcome.
+type flagSnapshot struct {
+	globals                   GlobalOptions
+	cleanAll                  bool
+	cleanUnused               bool
+	cleanSystem               bool
+	installDir                string
+	listJSON                  bool
+	versionJSON               bool
+	privateCleanAll           bool
+	privateCleanStaleDay      int
+	privateCleanMaxSize       int64
+	privateOffline            bool
+	privateSyncRetries        int
+	privateSyncLatestIfMissed bool
+	privateSyncSource         string
+	privatePatterns           string
+	noSumDBPatterns           string
+	noProxyPatterns           string
+	cacheDirFlag              string
+}
+
+func snapshotFlags() flagSnapshot {
+	return flagSnapshot{
+		globals:                   globals,
+		cleanAll:                  cleanAll,
+		cleanUnused:               cleanUnused,
+		cleanSystem:               cleanSystem,
+		installDir:                installDir,
+		listJSON:                  listJSON,
+		versionJSON:               versionJSON,
+		privateCleanAll:           privateCleanAll,
+		privateCleanStaleDay:      privateCleanStaleDay,
+		privateCleanMaxSize:       privateCleanMaxSize,
+		privateOffline:            privateOffline,
+		privateSyncRetries:        privateSyncRetries,
+		privateSyncLatestIfMissed: privateSyncLatestIfMissed,
+		privateSyncSource:         privateSyncSource,
+		privatePatterns:           privatePatterns,
+		noSumDBPatterns:           noSumDBPatterns,
+		noProxyPatterns:           noProxyPatterns,
+		cacheDirFlag:              cacheDirFlag,
+	}
+}
+
+func (s flagSnapshot) restore() {
+	globals = s.globals
+	cleanAll = s.cleanAll
+	cleanUnused = s.cleanUnused
+	cleanSystem = s.cleanSystem
+	installDir = s.installDir
+	listJSON = s.listJSON
+	versionJSON = s.versionJSON
+	privateCleanAll = s.privateCleanAll
+	privateCleanStaleDay = s.privateCleanStaleDay
+	privateCleanMaxSize = s.privateCleanMaxSize
+	privateOffline = s.privateOffline
+	privateSyncRetries = s.privateSyncRetries
+	privateSyncLatestIfMissed = s.privateSyncLatestIfMissed
+	privateSyncSource = s.privateSyncSource
+	privatePatterns = s.privatePatterns
+	noSumDBPatterns = s.noSumDBPatterns
+	noProxyPatterns = s.noProxyPatterns
+	cacheDirFlag = s.cacheDirFlag
+}
+
 // runRootCommand executes the real root command tree so flag parsing, argument
 // validation, and exit-code classification are exercised end to end. Writer
 // injection targets the shared root command because child commands resolve
@@ -49,9 +117,11 @@ func runRootCommand(t *testing.T, args ...string) (stdout string, stderr string,
 	var out, errOut bytes.Buffer
 	rootCmd.SetOut(&out)
 	rootCmd.SetErr(&errOut)
+	snapshot := snapshotFlags()
 	defer func() {
 		rootCmd.SetOut(previousOut)
 		rootCmd.SetErr(previousErr)
+		snapshot.restore()
 	}()
 
 	err = rootCmd.ExecuteArgs(args)
