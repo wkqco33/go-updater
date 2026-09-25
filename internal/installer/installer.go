@@ -396,23 +396,32 @@ func InstallGo(url, sha256Str string, targetDir string, version string, opts Opt
 	currentLink := filepath.Join(targetDir, "current")
 	binDir := filepath.Join(currentLink, "bin")
 
-	fmt.Fprintln(opts.out(), "\n[환경 변수(PATH) 설정 안내]")
-	if runtime.GOOS == "windows" {
-		fmt.Fprintf(opts.out(), "Windows 시스템 환경 변수 편집에서 다음 경로를 PATH에 추가하세요:\n  %s\n", binDir)
-	} else {
-		shell := os.Getenv("SHELL")
-		configFiles := []string{".bashrc", ".profile"}
-		if filepath.Base(shell) == "zsh" {
-			configFiles = []string{".zshrc"}
-		}
-
-		fmt.Fprintln(opts.out(), "터미널에서 아래 명령어를 실행하여 PATH를 설정할 수 있습니다:")
-		for _, file := range configFiles {
-			fmt.Fprintf(opts.out(), "  echo 'export PATH=$PATH:%s' >> ~/%s\n", binDir, file)
-		}
-		fmt.Fprintln(opts.out(), "\n설정 후에는 터미널을 재시작하거나 'source' 명령어로 설정을 적용하세요.")
-		fmt.Fprintf(opts.out(), "  source ~/%s\n", configFiles[0])
-	}
+	fmt.Fprintln(opts.out(), "\n"+PathGuidance(runtime.GOOS, os.Getenv("SHELL"), binDir))
 
 	return nil
+}
+
+// PathGuidance returns the instructions shown after a successful install for
+// adding binDir to PATH. It points at `gu env` first so users no longer have
+// to hand-edit a startup file, and still shows the concrete path for manual
+// setup. goos and shell are parameters so the platform branches are testable.
+func PathGuidance(goos, shell, binDir string) string {
+	var b strings.Builder
+	b.WriteString("[환경 변수(PATH) 설정 안내]\n")
+	if goos == "windows" {
+		b.WriteString("다음 명령으로 현재 PowerShell 세션에 적용하거나 사용자 PATH에 저장할 수 있습니다:\n")
+		b.WriteString("  gu env init powershell | Invoke-Expression\n")
+		b.WriteString("  gu env set\n")
+		b.WriteString("또는 Windows 시스템 환경 변수 편집에서 다음 경로를 PATH에 추가하세요:\n")
+		fmt.Fprintf(&b, "  %s\n", binDir)
+		return b.String()
+	}
+
+	b.WriteString("다음 명령으로 현재 셸에 즉시 적용하거나 시작 파일에 저장할 수 있습니다:\n")
+	b.WriteString("  eval \"$(gu env init)\"\n")
+	b.WriteString("  gu env set\n")
+	b.WriteString("수동으로 설정하려면 다음 경로를 PATH에 추가하세요:\n")
+	fmt.Fprintf(&b, "  export PATH=$PATH:%s\n", binDir)
+	b.WriteString("설정 후에는 터미널을 재시작하거나 'source' 명령어로 설정을 적용하세요.\n")
+	return b.String()
 }
