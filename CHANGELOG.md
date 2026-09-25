@@ -6,6 +6,30 @@
 
 ## [Unreleased]
 
+### Added
+
+- `gu env` 명령군을 추가했습니다: `init`(셸 코드 출력), `show`(상태 확인),
+  `set`(환경 파일 + 시작 파일 연결), `unset`(설정 제거).
+- `gu env init`은 `zsh`, `bash`, `sh`, `fish`, `powershell`, `cmd`별 인용 규칙에 맞는
+  코드를 출력하며, `$`·백틱·따옴표가 있는 경로도 `eval`/`source` 시 확장되지 않습니다.
+- `gu env set`은 `$XDG_CONFIG_HOME/gu/env.*` 파일과 시작 파일의 gu 블록만 관리하고,
+  수정 전 백업(`.gu-backup`)을 남기며 반복 실행해도 블록이 중복되지 않습니다.
+- Windows에서는 `setx` 대신 `[Environment]::SetEnvironmentVariable('Path', ..., 'User')`로
+  사용자 PATH를 갱신합니다.
+- `gu env set --goroot`/`--gopath`, `gu env init --module`로 GOROOT/GOPATH/프라이빗
+  모듈 캐시 변수를 선택적으로 설정할 수 있습니다.
+- 설치 후 안내가 `gu env init`/`gu env set`을 우선 안내하도록 바뀌었습니다.
+
+### Changed
+
+- `XDG_CONFIG_HOME`이 설정되면 `gu env`가 관리하는 환경 파일 위치를
+  `$XDG_CONFIG_HOME/gu/env.*`로 사용합니다.
+
+### Security
+
+- `gu env set`은 손상된 시작 파일(끝 마커 누락, 중복 블록)을 수정하지 않고 거부하며,
+  쓰기는 임시 파일 + rename으로 수행해 중단 시에도 셸 설정이 잘리지 않습니다.
+
 ## [0.2.0] - 2026-09-12
 
 ### Added

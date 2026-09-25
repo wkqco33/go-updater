@@ -17,6 +17,9 @@
 - **용량 관리**: 더 이상 사용하지 않는 구버전을 간편하게 삭제할 수 있습니다.
 - **프라이빗 모듈 캐시**: 프라이빗 Go 모듈을 선캐시하고, 다른 프로젝트에서 동일 캐시를
   재사용할 수 있습니다.
+- **셸 환경 자동 설정**: `gu env init`으로 현재 셸에 즉시 적용하고, `gu env set`으로
+  시작 파일(또는 Windows 사용자 PATH)에 안전하게 저장·되돌릴 수 있습니다. `GOROOT`와
+  `GOPATH`, 프라이빗 모듈 캐시 변수는 필요할 때만 선택적으로 설정합니다.
 - **사용자 권한 최적화**: 기본적으로 사용자 디렉토리(`~/.go`)에 설치되어 관리자
   권한(`sudo`)이 필요하지 않습니다.
 - **스크립트 친화적**: 결과는 stdout, 진행·오류는 stderr로 분리하고, `--json`,
@@ -108,7 +111,7 @@ gu list --json
 
 CLI는 스크립트에서 안전하게 쓸 수 있도록 스트림과 종료 코드를 분리합니다.
 
-- **stdout**: 결과 (버전 목록, JSON, `export` 문, 설치 완료 요약)
+- **stdout**: 결과 (버전 목록, JSON, `gu env init`/`gu private env` 코드, 설치 완료 요약)
 - **stderr**: 진행·상태·경고·오류 메시지와 확인 프롬프트
 - 다운로드 진행률은 stderr가 TTY이고 `--quiet`가 아닐 때만 표시합니다.
 
@@ -124,8 +127,9 @@ CLI는 스크립트에서 안전하게 쓸 수 있도록 스트림과 종료 코
 | --- | --- |
 | `GU_HOME` | 버전·`current`·프라이빗 상태의 루트 디렉토리 (기본값: `~/.go`) |
 | `XDG_CACHE_HOME` | 설정 시 프라이빗 모듈 캐시 기본 위치가 `$XDG_CACHE_HOME/go-updater/modcache`가 됩니다 |
+| `XDG_CONFIG_HOME` | 설정 시 `gu env`가 관리하는 환경 파일 위치가 `$XDG_CONFIG_HOME/gu/env.*`가 됩니다 |
 | `NO_COLOR` | 설정 시 색상 출력을 끕니다 |
-| `SHELL` | 설치 후 PATH 설정 안내에 사용할 셸 설정 파일을 결정합니다 |
+| `SHELL` | 설치 후 PATH 안내와 `gu env`의 기본 대상 셸을 결정합니다 |
 
 `--home`이 지정되면 `GU_HOME`보다 우선하며, `install -d`는 `install` 명령에 한해
 같은 값을 지정합니다.
@@ -154,6 +158,9 @@ gu install --dry-run 1.21.0
 - 마이너 버전만 지정하면 해당 마이너의 **안정 릴리스** 중 가장 높은 패치를 선택합니다.
   `1.2`는 `go1.2.x`만 선택하며 `go1.20.x`나 `go1.27.x`를 선택하지 않습니다.
 - `--dry-run`은 버전 확인까지만 수행하고 다운로드·설치는 하지 않습니다.
+- 설치가 끝나면 `current/bin`을 PATH에 추가하는 방법(`gu env init`/`gu env set`)과
+  수동 설정 경로를 안내합니다. 이미 PATH가 설정되어 있어도 안내만 출력하며 기존
+  설정을 바꾸지 않습니다.
 
 | 플래그 | 단축 | 기본값 | 설명 |
 | --- | --- | --- | --- |
@@ -250,6 +257,30 @@ gu --version
 
 릴리스 바이너리에서는 명령어 버전이 해당 Git tag와 일치합니다. 소스에서 직접 빌드한
 경우 버전은 `dev`로 표시됩니다.
+
+### 6. 셸 환경 설정 (`env`)
+
+`current/bin`을 `PATH`에 추가하는 작업을 도와줍니다. 플랫폼별 동작과 수동 설정은
+[환경 변수 설정 (PATH)](#환경-변수-설정-path)을 참고하세요.
+
+```bash
+# 현재 셸에 즉시 적용 (파일 수정 없음)
+eval "$(gu env init)"
+
+# 환경 파일 생성 후 시작 파일 연결 (Windows는 사용자 PATH 갱신)
+gu env set
+
+# 상태 확인 및 되돌리기
+gu env show
+gu env unset
+```
+
+| 명령어 | 설명 |
+| --- | --- |
+| `gu env init [shell]` | `PATH`(및 선택적 `GOROOT`/`GOPATH`/모듈 캐시 변수) 코드를 stdout으로 출력 |
+| `gu env show [--json]` | 감지된 셸, PATH 포함 여부, 환경·시작 파일 설정 상태 출력 |
+| `gu env set` | 환경 파일 생성 후 시작 파일(또는 Windows 사용자 PATH)에 연결 |
+| `gu env unset` | gu가 추가한 블록과 환경 파일만 제거 |
 
 ## 프라이빗 모듈 캐시 사용
 
@@ -423,15 +454,86 @@ gu private clean --all --dry-run
 
 ## 환경 변수 설정 (PATH)
 
-버전 매니저 기능을 정상적으로 사용하려면, 환경 변수 `PATH`에 아래 경로를 추가해야
-합니다. 설치 완료 후 출력되는 가이드에 따라 `.bashrc` 또는 `.zshrc`에 추가하세요.
+버전 매니저 기능을 정상적으로 사용하려면 `current/bin` 경로가 `PATH`에 있어야 합니다.
+`~/.go/current`는 심볼릭 링크(Windows는 junction)라서 `gu use`로 전환해도 경로가
+고정됩니다. 설치 완료 후 안내에 따라 아래 방법 중 하나를 사용하세요.
+
+### 즉시 적용 (파일 수정 없음)
 
 ```bash
-# ~/.go/current/bin 경로를 PATH에 추가 (이 경로는 심볼릭 링크이므로 버전 전환 시에도 고정됩니다)
+# 현재 셸 세션에만 적용
+eval "$(gu env init)"
+
+# 셸을 직접 지정
+eval "$(gu env init zsh)"
+
+# GOROOT/GOPATH나 프라이빗 모듈 캐시 변수도 함께
+eval "$(gu env init --goroot --module)"
+```
+
+`gu env init`은 stdout으로 셸 코드만 출력하고 파일을 수정하지 않습니다. 경로에 `$`,
+백틱, 작은따옴표가 있어도 셸별 인용 규칙에 맞게 이스케이프되어 `eval` 시 확장되지
+않습니다. 지원 셸은 `zsh`, `bash`, `sh`, `fish`, `powershell`, `cmd`입니다.
+
+### 파일로 저장 (`gu env set`)
+
+```bash
+# ~/.config/gu/env.sh 생성 + 시작 파일에 source 한 줄 추가
+gu env set
+
+# 특정 셸/시작 파일 지정, 계획만 확인
+gu env set --shell fish
+gu env set --rc ~/.bashrc
+gu env set --dry-run
+```
+
+`gu env set`은 gu가 소유한 환경 파일만 만들고, 시작 파일에는 아래처럼 표시된 블록
+**하나만** 삽입합니다. 기존 사용자 설정은 그대로 두고 수정 전에
+`<시작 파일>.gu-backup`으로 백업합니다. 반복 실행해도 블록이 중복되지 않습니다.
+
+```bash
+# >>> gu initialize >>>
+[ -f "$HOME/.config/gu/env.sh" ] && . "$HOME/.config/gu/env.sh"
+# <<< gu initialize <<<
+```
+
+### 상태 확인과 되돌리기
+
+```bash
+# 감지된 셸, PATH 포함 여부, 환경 파일/시작 파일 설정 상태
+gu env show
+gu env show --json
+
+# gu가 추가한 블록과 환경 파일만 제거 (확인 프롬프트)
+gu env unset
+gu env unset --dry-run
+gu env unset --yes
+```
+
+### Windows
+
+PowerShell/`cmd`에서는 시작 파일 대신 **사용자 PATH 환경 변수**를 직접 갱신합니다.
+`setx`는 PATH를 1024자에서 자르고 `%VAR%`를 확장하므로 사용하지 않고,
+`[Environment]::SetEnvironmentVariable('Path', ..., 'User')`를 사용합니다. 변경은
+새 터미널(또는 새 프로세스)부터 적용됩니다. Git Bash 등 POSIX 셸을 Windows에서 쓴다면
+`--rc`로 대상 파일을 지정하세요.
+
+### 수동 설정
+
+`--home`/`GU_HOME`으로 루트를 바꿨다면 해당 루트의 `current/bin`을 추가합니다.
+
+```bash
+# ~/.go/current/bin 경로를 PATH에 추가
 export PATH=$PATH:~/.go/current/bin
 ```
 
-`--home`/`GU_HOME`으로 루트를 바꿨다면 해당 루트의 `current/bin`을 추가하세요.
+`GOROOT`는 기본적으로 설정하지 않습니다. `go` 실행 파일이 자기 위치에서 GOROOT를
+찾으므로 버전 전환에 문제가 없고, 시스템 Go(`/usr/local/go`)와 충돌할 수 있습니다.
+필요하면 `gu env init --goroot` / `gu env set --goroot`로 명시적으로 켭니다.
+
+> macOS의 `/etc/paths.d/go` 같은 시스템 전역 설정은 `gu clean --system`이 제거
+> 대상으로 관리하므로 gu가 대신 쓰지 않습니다. 시스템 설정이 필요하면 수동으로
+> 관리하세요.
 
 ## 명령어 레퍼런스
 
@@ -442,6 +544,10 @@ export PATH=$PATH:~/.go/current/bin
 | `gu use <version>` | 설치된 특정 버전의 Go로 전환 |
 | `gu clean [version]` | 설치된 Go 버전 삭제 (`--all`, `--unused`, `--system`) |
 | `gu version [--json]` | `gu`의 버전 정보 출력 |
+| `gu env init [shell]` | 현재 셸에 적용할 환경변수 코드 출력 (`--goroot`, `--gopath`, `--module`) |
+| `gu env show [--json]` | 셸/PATH/환경 파일 설정 상태 출력 |
+| `gu env set` | 환경 파일 생성 후 시작 파일(또는 Windows 사용자 PATH)에 연결 |
+| `gu env unset` | 시작 파일의 gu 블록과 환경 파일 제거 |
 | `gu private config init` | 기본 프라이빗 캐시 설정 파일 생성 |
 | `gu private config set` | 프라이빗 모듈 캐시 설정 값 갱신 |
 | `gu private config show` | 현재 프라이빗 모듈 캐시 설정 출력 |
