@@ -118,6 +118,10 @@ func TestPersistBacksUpExistingRC(t *testing.T) {
 	if err := os.WriteFile(rc, []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.Stat(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := Persist(testPersistOptions(envFile, rc))
 	if err != nil {
@@ -133,12 +137,15 @@ func TestPersistBacksUpExistingRC(t *testing.T) {
 	if string(backup) != original {
 		t.Fatalf("backup = %q, want %q", backup, original)
 	}
-	info, err := os.Stat(rc)
+	// Compare against the mode the file had before instead of a hardcoded
+	// 0600: Windows does not map POSIX permission bits, so only preservation
+	// is portable across the CI matrix.
+	after, err := os.Stat(rc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("rc mode = %v, want 0600", info.Mode().Perm())
+	if after.Mode().Perm() != before.Mode().Perm() {
+		t.Fatalf("rc mode = %v, want preserved %v", after.Mode().Perm(), before.Mode().Perm())
 	}
 	if !strings.HasPrefix(mustRead(t, rc), "# user config\n") {
 		t.Fatalf("existing rc content was not preserved: %q", mustRead(t, rc))
