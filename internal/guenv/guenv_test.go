@@ -72,3 +72,33 @@ func TestCacheDirDefaultsUnderRootPrivate(t *testing.T) {
 		t.Fatalf("CacheDir() = %q, want %q", got, want)
 	}
 }
+
+func TestConfigDirHonorsXDGConfigHome(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+
+	got, err := ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != xdg {
+		t.Fatalf("ConfigDir() = %q, want %q", got, xdg)
+	}
+}
+
+func TestConfigDirFallsBackToHomeDotConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("HOME", home)
+	if os.Getenv("USERPROFILE") != "" {
+		t.Setenv("USERPROFILE", home)
+	}
+
+	got, err := ConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".config"); got != want {
+		t.Fatalf("ConfigDir() = %q, want %q", got, want)
+	}
+}

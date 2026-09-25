@@ -14,7 +14,31 @@ const (
 	EnvHome = "GU_HOME"
 	// EnvCacheHome is the XDG base directory for rebuildable cache data.
 	EnvCacheHome = "XDG_CACHE_HOME"
+	// EnvConfigHome is the XDG base directory for user configuration.
+	EnvConfigHome = "XDG_CONFIG_HOME"
 )
+
+// HomeDir returns the current user's home directory. Commands must call this
+// instead of os.UserHomeDir so shell setup and tests share one definition.
+func HomeDir() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get home directory: %w", err)
+	}
+	return homeDir, nil
+}
+
+// ConfigDir returns $XDG_CONFIG_HOME when set, otherwise ~/.config.
+func ConfigDir() (string, error) {
+	if override := strings.TrimSpace(os.Getenv(EnvConfigHome)); override != "" {
+		return override, nil
+	}
+	homeDir, err := HomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".config"), nil
+}
 
 // Root returns the gu root directory: $GU_HOME when set, otherwise ~/.go.
 func Root() (string, error) {

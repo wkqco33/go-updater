@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/wkqco33/go-updater/internal/guenv"
 )
 
 func TestParseCSVPatterns(t *testing.T) {
@@ -124,5 +126,26 @@ func TestDefaultConfigKeepsCacheUnderRootWithoutXDG(t *testing.T) {
 	}
 	if want := filepath.Join(root, "private", "modcache"); cfg.CacheDir != want {
 		t.Fatalf("DefaultConfig().CacheDir = %q, want %q", cfg.CacheDir, want)
+	}
+}
+
+func TestConfigPathUsesExplicitRoot(t *testing.T) {
+	t.Setenv("GU_HOME", "/elsewhere")
+	want := filepath.Join("/explicit", "private", "config.json")
+	if got := ConfigPath("/explicit"); got != want {
+		t.Fatalf("ConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestLoadConfigForRootUsesRootDefaults(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GU_HOME", t.TempDir())
+
+	cfg, err := LoadConfigForRoot(root, ConfigPath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := guenv.CacheDir(root); cfg.CacheDir != want {
+		t.Fatalf("CacheDir = %q, want %q", cfg.CacheDir, want)
 	}
 }

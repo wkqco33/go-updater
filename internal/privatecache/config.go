@@ -34,12 +34,19 @@ func DefaultBaseDir() (string, error) {
 	return guenv.PrivateDir(root), nil
 }
 
+// ConfigPath returns the private cache config path under an explicit gu root,
+// so callers that resolved a root (e.g. --home) do not silently read the
+// GU_HOME environment override instead.
+func ConfigPath(root string) string {
+	return filepath.Join(guenv.PrivateDir(root), configFileName)
+}
+
 func DefaultConfigPath() (string, error) {
-	baseDir, err := DefaultBaseDir()
+	root, err := guenv.Root()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(baseDir, configFileName), nil
+	return ConfigPath(root), nil
 }
 
 func DefaultMetadataPath() (string, error) {
@@ -56,17 +63,29 @@ func DefaultConfig() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	return DefaultConfigForRoot(root), nil
+}
+
+// DefaultConfigForRoot is DefaultConfig for an explicit gu root.
+func DefaultConfigForRoot(root string) Config {
 	return Config{
 		Version:  1,
 		CacheDir: guenv.CacheDir(root),
-	}, nil
+	}
 }
 
 func LoadConfig(path string) (Config, error) {
-	defaultCfg, err := DefaultConfig()
+	root, err := guenv.Root()
 	if err != nil {
 		return Config{}, err
 	}
+	return LoadConfigForRoot(root, path)
+}
+
+// LoadConfigForRoot loads the config at path, falling back to defaults rooted
+// at root rather than the GU_HOME environment override.
+func LoadConfigForRoot(root, path string) (Config, error) {
+	defaultCfg := DefaultConfigForRoot(root)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

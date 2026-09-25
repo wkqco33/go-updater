@@ -61,6 +61,12 @@ type flagSnapshot struct {
 	noSumDBPatterns           string
 	noProxyPatterns           string
 	cacheDirFlag              string
+	envShell                  string
+	envJSON                   bool
+	envGoroot                 bool
+	envGopath                 string
+	envModule                 bool
+	envRC                     string
 }
 
 func snapshotFlags() flagSnapshot {
@@ -83,6 +89,12 @@ func snapshotFlags() flagSnapshot {
 		noSumDBPatterns:           noSumDBPatterns,
 		noProxyPatterns:           noProxyPatterns,
 		cacheDirFlag:              cacheDirFlag,
+		envShell:                  envShell,
+		envJSON:                   envJSON,
+		envGoroot:                 envGoroot,
+		envGopath:                 envGopath,
+		envModule:                 envModule,
+		envRC:                     envRC,
 	}
 }
 
@@ -105,6 +117,12 @@ func (s flagSnapshot) restore() {
 	noSumDBPatterns = s.noSumDBPatterns
 	noProxyPatterns = s.noProxyPatterns
 	cacheDirFlag = s.cacheDirFlag
+	envShell = s.envShell
+	envJSON = s.envJSON
+	envGoroot = s.envGoroot
+	envGopath = s.envGopath
+	envModule = s.envModule
+	envRC = s.envRC
 }
 
 // runRootCommand executes the real root command tree so flag parsing, argument
